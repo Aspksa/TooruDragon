@@ -522,3 +522,18 @@ GET http://127.0.0.1:8710/health
 ```
 
 Подробности: `docs/WEB_CONTROL_CENTER.md`.
+
+
+### Web Control Center 2.0
+
+Control Center дополнен операционным live-слоем:
+
+- SSE-поток Durable Event Fabric без обычного polling;
+- графики RAM, CPU и средней latency ядер;
+- SVG Workflow Graph по `workflow_id / parent_id`;
+- просмотр transition history выбранной задачи;
+- Agent Console с реальными Tool Router / Planner операциями;
+- Audit dashboard: lifecycle history, DLQ, consumer lag и retention gaps.
+
+Для графиков и workflow-визуализации не добавлены npm/CDN-зависимости: используются
+нативные Canvas, SVG и EventSource.
