@@ -201,6 +201,12 @@ function Test-Supervisor{
         return ($r.status -eq "ok")
     }catch{return $false}
 }
+function Test-Gateway{
+    try{
+        $r=Invoke-RestMethod -Uri "http://127.0.0.1:8698/health" -TimeoutSec 1
+        return ($r.status -eq "ok")
+    }catch{return $false}
+}
 
 $tray=New-Object Windows.Forms.NotifyIcon
 $tray.Icon=$appIcon
@@ -389,16 +395,16 @@ $home.Controls.Add($diag)
 $diag.Controls.Add((L "⌁  Состояние системы" 18 9 300 34 14 $text ([Drawing.FontStyle]::Bold)))
 $diagLabels=@{}
 $x=18
-foreach($name in @("Python","Git","SQLite","Порты","Supervisor","Watchdog","Registry","UTF-8")){
-    $b=P $x 48 128 55 $panel2
+foreach($name in @("Python","Git","SQLite","Порты","Gateway","Supervisor","Watchdog","Registry","UTF-8")){
+    $b=P $x 48 110 55 $panel2
     $s=L "●" 10 12 28 28 14 $yellow ([Drawing.FontStyle]::Bold)
-    $v=L "Проверка..." 40 29 84 20 8 $yellow
+    $v=L "Проверка..." 34 29 72 20 7.6 $yellow
     $b.Controls.Add($s)
-    $b.Controls.Add((L $name 40 7 84 22 8.6 $text ([Drawing.FontStyle]::Bold)))
+    $b.Controls.Add((L $name 34 7 72 22 7.8 $text ([Drawing.FontStyle]::Bold)))
     $b.Controls.Add($v)
     $diag.Controls.Add($b)
     $diagLabels[$name]=@($s,$v)
-    $x+=135
+    $x+=120
 }
 
 $corePage=$pages["Ядра"]
@@ -519,6 +525,7 @@ $timer.Add_Tick({
         "Git"=[bool](Get-Command git -ErrorAction SilentlyContinue)
         "SQLite"=(Test-Database)
         "Порты"=(Test-Ports)
+        "Gateway"=(Test-Gateway)
         "Supervisor"=(Test-Supervisor)
         "Watchdog"=(Test-Watchdog)
         "Registry"=(Test-Registry)
