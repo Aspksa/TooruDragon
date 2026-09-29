@@ -1,4 +1,4 @@
-# TooruDragon Core Platform v0.3 Alpha
+# TooruDragon Core Platform v0.3
 
 v0.3 moves TooruDragon from an in-process orchestration model toward a real
 Control Plane / Intelligence Plane split while preserving the current Alpha
@@ -235,7 +235,7 @@ The Windows Launcher now:
 - stops Web UI, cores and Supervisor on Stop All;
 - restores desired state on Start All;
 - shows Supervisor as a diagnostic;
-- reports platform version `0.3.0-alpha`.
+- reports platform version `0.3.0`.
 
 ## Quality gates
 
