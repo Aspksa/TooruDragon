@@ -1,55 +1,48 @@
 @echo off
-setlocal
+setlocal EnableExtensions
+chcp 65001 >nul
 cd /d "%~dp0\.."
-
-where python >nul 2>nul
+set "PYTHON_EXE=%TOORUDRAGON_PYTHON%"
+if not defined PYTHON_EXE set "PYTHON_EXE=python"
+"%PYTHON_EXE%" -c "import sys; print(sys.version)" >nul 2>nul
 if errorlevel 1 (
-    echo [ERROR] Python is not installed or not available in PATH.
+    echo [ОШИБКА] Python недоступен.
     exit /b 1
 )
-
-echo [TooruDragon] Initializing database...
-python "scripts\init_db.py"
+echo.
+echo [БАЗА] Инициализация общей базы данных...
+"%PYTHON_EXE%" "scripts\init_db.py"
+if errorlevel 1 exit /b 2
+echo [ЯДРО] Запуск Tooru/AI...
+start "TooruDragon - Tooru AI" cmd /k "chcp 65001>nul && set PYTHONUTF8=1 && set PYTHONIOENCODING=utf-8 && "core\tooru_ai\start.bat""
+echo [ЯДРО] Запуск Лаборатории Tooru/AI...
+start "TooruDragon - Лаборатория" cmd /k "chcp 65001>nul && set PYTHONUTF8=1 && set PYTHONIOENCODING=utf-8 && "core\workshop\start.bat""
+echo [ЯДРО] Запуск Домашнего ядра...
+start "TooruDragon - Дом" cmd /k "chcp 65001>nul && set PYTHONUTF8=1 && set PYTHONIOENCODING=utf-8 && "core\home\start.bat""
+echo [ЯДРО] Запуск Рабочего ядра...
+start "TooruDragon - Работа" cmd /k "chcp 65001>nul && set PYTHONUTF8=1 && set PYTHONIOENCODING=utf-8 && "core\work\start.bat""
+echo [ЯДРО] Запуск Мобильного ядра...
+start "TooruDragon - Mobile" cmd /k "chcp 65001>nul && set PYTHONUTF8=1 && set PYTHONIOENCODING=utf-8 && "core\mobile\start.bat""
+timeout /t 2 /nobreak >nul
+echo [ЯДРО] Запуск Главного ядра...
+start "TooruDragon - Главное ядро" cmd /k "chcp 65001>nul && set PYTHONUTF8=1 && set PYTHONIOENCODING=utf-8 && "core\main\start.bat""
+echo [WEB] Запуск русского Web UI...
+start "TooruDragon - Web" cmd /k "chcp 65001>nul && set PYTHONUTF8=1 && set PYTHONIOENCODING=utf-8 && "web\start.bat""
+timeout /t 3 /nobreak >nul
+echo.
+echo [ПРОВЕРКА] Проверяю состояние всех ядер...
+"%PYTHON_EXE%" "scripts\check_health.py"
 if errorlevel 1 (
-    echo [ERROR] Database initialization failed.
-    exit /b 1
+    echo [ПРЕДУПРЕЖДЕНИЕ] Не все ядра подтвердили готовность.
+    exit /b 3
 )
-
-echo [TooruDragon] Starting Tooru/AI Core...
-start "Tooru AI Core" cmd /k "core\tooru_ai\start.bat"
-
-echo [TooruDragon] Starting Tooru/AI Laboratory Core...
-start "Tooru AI Laboratory Core" cmd /k "core\workshop\start.bat"
-
-echo [TooruDragon] Starting Home Core...
-start "Tooru Home Core" cmd /k "core\home\start.bat"
-
-echo [TooruDragon] Starting Work Core...
-start "Tooru Work Core" cmd /k "core\work\start.bat"
-
-echo [TooruDragon] Starting Mobile Core...
-start "Tooru Mobile Core" cmd /k "core\mobile\start.bat"
-
-timeout /t 2 /nobreak >nul
-
-echo [TooruDragon] Starting Main Core...
-start "TooruDragon Main Core" cmd /k "core\main\start.bat"
-
-echo [TooruDragon] Starting Web UI...
-start "TooruDragon Web" cmd /k "web\start.bat"
-
-timeout /t 2 /nobreak >nul
-
 echo.
-echo [TooruDragon] Checking core health...
-python "scripts\check_health.py"
-
-echo.
-echo [TooruDragon] Main Core:   http://127.0.0.1:8700
-echo [TooruDragon] Tooru/AI:    http://127.0.0.1:8701
-echo [TooruDragon] Laboratory:  http://127.0.0.1:8702
-echo [TooruDragon] Home:        http://127.0.0.1:8703
-echo [TooruDragon] Work:        http://127.0.0.1:8704
-echo [TooruDragon] Mobile:      http://127.0.0.1:8705
-echo [TooruDragon] Web UI:      http://127.0.0.1:8710
-endlocal
+echo [ГОТОВО] Все ядра отвечают.
+echo [АДРЕС] Главное ядро:  http://127.0.0.1:8700
+echo [АДРЕС] Tooru/AI:       http://127.0.0.1:8701
+echo [АДРЕС] Лаборатория:    http://127.0.0.1:8702
+echo [АДРЕС] Дом:            http://127.0.0.1:8703
+echo [АДРЕС] Работа:         http://127.0.0.1:8704
+echo [АДРЕС] Mobile:         http://127.0.0.1:8705
+echo [АДРЕС] Web UI:         http://127.0.0.1:8710
+exit /b 0
