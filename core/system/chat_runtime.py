@@ -45,8 +45,8 @@ class ChatRuntime:
         if not message:
             raise ValueError("message is required")
 
-        conversation_id = self.memory.ensure_conversation(conversation_id)
-        trace_id = (trace_id or "").strip() or str(uuid4())
+        conversation_id = str(conversation_id or "").strip() or str(uuid4())
+        trace_id = str(trace_id or "").strip() or str(uuid4())
 
         history = self.memory.history(
             conversation_id,
