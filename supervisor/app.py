@@ -596,7 +596,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> int:
-    db.initialize(str(config.get("version", "0.3.0-alpha")))
+    db.initialize(str(config.get("version", "0.3.0")))
     restore_deployments()
     thread = threading.Thread(
         target=recovery_loop,
