@@ -7,6 +7,10 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from core.system import CoreRuntime, Route
+from core.system.ai_memory import AIMemoryStore
+from core.system.chat_runtime import ChatConfig, ChatRuntime
+from core.system.model_router import ModelProviderError, ModelRouter
+from core.system.secrets import SecretStore
 
 CAPABILITIES = [
     "dialog",
@@ -14,6 +18,8 @@ CAPABILITIES = [
     "models",
     "tools",
     "ai_orchestration",
+    "chat_runtime",
+    "retrieval",
 ]
 
 runtime = CoreRuntime(
@@ -22,15 +28,174 @@ runtime = CoreRuntime(
     capabilities=CAPABILITIES,
 )
 
+ai_cfg = runtime.config.get("ai_runtime", {})
+secrets = SecretStore()
+memory = AIMemoryStore(runtime.db)
+model_router = ModelRouter(
+    ai_cfg.get("model_router", {}),
+    secrets=secrets,
+)
+chat_runtime = ChatRuntime(
+    model_router,
+    memory,
+    ChatConfig(
+        system_prompt=str(ai_cfg.get("system_prompt", "")),
+        history_limit=int(ai_cfg.get("history_limit", 24)),
+        retrieval_limit=int(ai_cfg.get("retrieval_limit", 6)),
+        memory_scope=str(ai_cfg.get("memory_scope", "global")),
+    ),
+)
+
 
 def capabilities(_request):
     return 200, {
         "service": "tooru_ai",
+        "version": runtime.version,
         "capabilities": CAPABILITIES,
     }
 
 
+def runtime_status(_request):
+    return 200, {
+        "service": "tooru_ai",
+        "version": runtime.version,
+        "runtime": chat_runtime.status(),
+    }
+
+
+def models(_request):
+    return 200, {
+        "service": "tooru_ai",
+        "models": model_router.status(),
+    }
+
+
+def chat(request):
+    payload = request.json if isinstance(request.json, dict) else {}
+    message = str(payload.get("message", "")).strip()
+    if not message:
+        return 400, {"error": "message_required"}
+
+    try:
+        result = chat_runtime.chat(
+            message,
+            conversation_id=payload.get("conversation_id"),
+            provider=payload.get("provider"),
+            model=payload.get("model"),
+            temperature=(
+                float(payload["temperature"])
+                if payload.get("temperature") is not None
+                else None
+            ),
+            max_tokens=(
+                int(payload["max_tokens"])
+                if payload.get("max_tokens") is not None
+                else None
+            ),
+            trace_id=payload.get("trace_id") or request.request_id,
+        )
+    except ModelProviderError as exc:
+        runtime.logger.warning("AI provider unavailable: %s", exc)
+        return 503, {
+            "error": "provider_unavailable",
+            "message": str(exc),
+            "models": model_router.status(),
+        }
+    except (ValueError, TypeError) as exc:
+        return 400, {
+            "error": "invalid_chat_request",
+            "message": str(exc),
+        }
+
+    return 200, {
+        "service": "tooru_ai",
+        "chat": result,
+    }
+
+
+def conversations(request):
+    raw_limit = request.query.get("limit", ["50"])[0]
+    try:
+        limit = int(raw_limit)
+    except ValueError:
+        return 400, {"error": "invalid_limit"}
+
+    return 200, {
+        "service": "tooru_ai",
+        "conversations": memory.conversations(limit=limit),
+    }
+
+
+def conversation(request):
+    conversation_id = str(
+        request.query.get("conversation_id", [""])[0]
+    ).strip()
+    if not conversation_id:
+        return 400, {"error": "conversation_id_required"}
+
+    return 200, {
+        "service": "tooru_ai",
+        "conversation_id": conversation_id,
+        "messages": memory.history(conversation_id, limit=200),
+    }
+
+
+def memory_remember(request):
+    payload = request.json if isinstance(request.json, dict) else {}
+    content = str(payload.get("content", "")).strip()
+    if not content:
+        return 400, {"error": "content_required"}
+
+    try:
+        item = chat_runtime.remember(
+            content,
+            scope=payload.get("scope"),
+            source=str(payload.get("source", "web")),
+            metadata=(
+                payload.get("metadata")
+                if isinstance(payload.get("metadata"), dict)
+                else {}
+            ),
+        )
+    except (ValueError, TypeError) as exc:
+        return 400, {"error": "invalid_memory", "message": str(exc)}
+
+    return 201, {
+        "service": "tooru_ai",
+        "memory": item,
+    }
+
+
+def memory_search(request):
+    query = str(request.query.get("q", [""])[0]).strip()
+    if not query:
+        return 400, {"error": "query_required"}
+    raw_limit = request.query.get("limit", ["6"])[0]
+    try:
+        limit = int(raw_limit)
+    except ValueError:
+        return 400, {"error": "invalid_limit"}
+
+    return 200, {
+        "service": "tooru_ai",
+        "query": query,
+        "memories": chat_runtime.search_memory(
+            query,
+            scope=request.query.get("scope", [None])[0],
+            limit=limit,
+        ),
+    }
+
+
 if __name__ == "__main__":
+    runtime.db.initialize(runtime.version)
     runtime.run({
         "/capabilities": Route(capabilities, protected=False),
+        "/runtime": Route(runtime_status, protected=False),
+        "/models": Route(models, protected=False),
+        "/chat": Route(chat, method="POST", protected=True),
+        "/conversations": Route(conversations, protected=True),
+        "/conversation": Route(conversation, protected=True),
+        "/memory/remember": Route(memory_remember, method="POST", protected=True),
+        "/memory/search": Route(memory_search, protected=True),
     })
