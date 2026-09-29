@@ -9,17 +9,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from core.common.server import run_server
+from core.system import CoreRuntime, Route
 
-HOST = "127.0.0.1"
-PORT = 8700
+runtime = CoreRuntime(
+    "main",
+    "Главное управляющее ядро TooruDragon",
+)
 
 CORES = {
-    "tooru_ai": "http://127.0.0.1:8701/health",
-    "laboratory": "http://127.0.0.1:8702/health",
-    "home": "http://127.0.0.1:8703/health",
-    "work": "http://127.0.0.1:8704/health",
-    "mobile": "http://127.0.0.1:8705/health",
+    name: f"http://{runtime.config_host}:{port}/health"
+    for name, port in runtime.cores.items()
+    if name != "main"
 }
 
 
@@ -33,21 +33,10 @@ def probe(url: str) -> dict:
                 "payload": payload,
             }
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-        return {
-            "ok": False,
-            "error": str(exc),
-        }
+        return {"ok": False, "error": str(exc)}
 
 
-def health():
-    return 200, {
-        "service": "main",
-        "version": "0.1.0-alpha",
-        "status": "ok",
-    }
-
-
-def cores():
+def cores(_request):
     states = {name: probe(url) for name, url in CORES.items()}
     all_ok = all(state.get("ok") for state in states.values())
     return (200 if all_ok else 503), {
@@ -57,24 +46,19 @@ def cores():
     }
 
 
-def routes():
+def routes(_request):
     return 200, {
         "service": "main",
         "routes": {
-            "/health": "Main Core health",
-            "/cores": "Health status of all specialized cores",
+            "/health": "Состояние главного ядра",
+            "/cores": "Состояние всех специализированных ядер",
+            "/system": "Системная информация",
         },
     }
 
 
 if __name__ == "__main__":
-    run_server(
-        "main",
-        HOST,
-        PORT,
-        {
-            "/health": health,
-            "/cores": cores,
-            "/routes": routes,
-        },
-    )
+    runtime.run({
+        "/cores": Route(cores, protected=False),
+        "/routes": Route(routes, protected=False),
+    })
