@@ -6,20 +6,26 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from core.common.server import run_server
+from core.system import CoreRuntime, Route
 
-HOST = "127.0.0.1"
-PORT = 8703
+runtime = CoreRuntime(
+    "home",
+    "Домашнее ядро: бытовые сценарии, автоматизация и персональные задачи",
+)
 
 
-def health():
+def capabilities(_request):
     return 200, {
         "service": "home",
-        "version": "0.1.0-alpha",
-        "status": "ok",
-        "role": "Home automation and personal scenarios",
+        "capabilities": [
+            "home_automation",
+            "personal_tasks",
+            "local_devices",
+        ],
     }
 
 
 if __name__ == "__main__":
-    run_server("home", HOST, PORT, {"/health": health})
+    runtime.run({
+        "/capabilities": Route(capabilities, protected=False),
+    })
