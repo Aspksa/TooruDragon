@@ -4,7 +4,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+[Console]::OutputEncoding = (New-Object System.Text.UTF8Encoding -ArgumentList $false)
 $OutputEncoding = [Console]::OutputEncoding
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 Set-Location $Root
@@ -29,7 +29,7 @@ function Test-WritableFolder([string]$Path) {
     try {
         New-Item -ItemType Directory -Force -Path $Path | Out-Null
         $test = Join-Path $Path ".toorudragon-write-test"
-        [IO.File]::WriteAllText($test,"ok",(New-Object System.Text.UTF8Encoding($false)))
+        [IO.File]::WriteAllText($test,"ok",(New-Object System.Text.UTF8Encoding -ArgumentList $false))
         Remove-Item $test -Force
         return $true
     } catch { return $false }
