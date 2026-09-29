@@ -271,7 +271,11 @@ def sync_active_routes() -> None:
         for core, data in list(active_deployments.items()):
             candidate = data["candidate"]
             previous = data["previous"]
-            probe = deployer.probe(candidate, timeout_seconds=2)
+            probe = deployer.probe(
+                candidate,
+                timeout_seconds=2,
+                cleanup_on_failure=False,
+            )
             if probe.get("ok"):
                 try:
                     deployer.promote(candidate)
