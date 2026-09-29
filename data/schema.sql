@@ -135,3 +135,11 @@ CREATE TABLE IF NOT EXISTS event_dead_letters (
 
 CREATE INDEX IF NOT EXISTS idx_event_dead_letters_consumer
 ON event_dead_letters(consumer, id);
+
+
+CREATE TABLE IF NOT EXISTS deployment_state (
+    core_name TEXT PRIMARY KEY,
+    candidate_json TEXT NOT NULL,
+    previous_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
