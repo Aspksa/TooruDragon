@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TooruDragon v0.1.0 Alpha</title>
+  <style>
+    :root { color-scheme: dark; font-family: Inter, Segoe UI, sans-serif; }
+    body { margin:0; background:#101217; color:#f6f7fb; }
+    main { max-width:980px; margin:0 auto; padding:32px 20px; }
+    h1 { margin-bottom:6px; }
+    .muted { color:#9aa3b2; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; margin-top:24px; }
+    .card { background:#181c24; border:1px solid #2a3140; border-radius:14px; padding:18px; }
+    .ok { color:#7ee787; }
+    .bad { color:#ff7b72; }
+    button { margin-top:22px; padding:10px 16px; border-radius:10px; border:1px solid #3d4658; background:#202632; color:#fff; cursor:pointer; }
+    code { color:#c9d1d9; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>TooruDragon</h1>
+  <div class="muted">v0.1.0 Alpha · Main Core + Tooru/AI + Workshop + Home + Work</div>
+  <button onclick="refreshStatus()">Обновить статус</button>
+  <div id="status" class="grid"></div>
+</main>
+<script>
+async function refreshStatus() {
+  const root = document.getElementById('status');
+  root.innerHTML = '<div class="card">Проверка...</div>';
+  try {
+    const res = await fetch('http://127.0.0.1:8700/cores', {cache:'no-store'});
+    const data = await res.json();
+    const entries = Object.entries(data.cores || {});
+    root.innerHTML = entries.map(([name, state]) => {
+      const ok = !!state.ok;
+      return '<div class="card"><strong>' + name + '</strong><div class="' + (ok?'ok':'bad') + '">' +
+        (ok?'ONLINE':'OFFLINE') + '</div><div class="muted"><code>' +
+        (state.status_code || state.error || '') + '</code></div></div>';
+    }).join('');
+  } catch (err) {
+    root.innerHTML = '<div class="card bad">Main Core недоступен: ' + err + '</div>';
+  }
+}
+refreshStatus();
+setInterval(refreshStatus, 5000);
+</script>
+</body>
+</html>
