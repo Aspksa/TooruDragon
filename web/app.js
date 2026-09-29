@@ -12,6 +12,7 @@ const state = {
   activePage: "dashboard",
   liveSource: null,
   selectedWorkflow: null,
+  latencyHistory: [],
 };
 
 const coreNames = {
@@ -133,6 +134,7 @@ function renderTelemetryCharts() {
   });
   drawLineChart($("#ram-chart"), ram, v=>`${v.toFixed(1)} MB`);
   drawLineChart($("#cpu-chart"), cpu, v=>`${v.toFixed(1)}%`);
+  drawLineChart($("#latency-chart"), state.latencyHistory, v=>`${v.toFixed(1)} ms`);
 }
 
 function appendConsole(role, message, isError=false) {
@@ -341,6 +343,10 @@ function renderDashboard() {
   const total = Object.keys(cores).length;
   const score = healthPercent();
   const obs = state.observability?.observability?.current || {};
+  const latencyValues = Object.values(cores).map(x=>Number(x.latency_ms)).filter(Number.isFinite);
+  const avgLatency = latencyValues.length ? latencyValues.reduce((a,b)=>a+b,0)/latencyValues.length : 0;
+  state.latencyHistory.push(avgLatency);
+  state.latencyHistory = state.latencyHistory.slice(-30);
   const ef = state.observability?.event_fabric || {};
   const safe = !!state.supervisor?.safe_mode;
   $("#health-score").innerHTML = `${score}<small>%</small>`;
