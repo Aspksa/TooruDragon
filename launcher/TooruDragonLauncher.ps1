@@ -137,6 +137,7 @@ function Stop-System{
     [void](Stop-Port 8710)
     foreach($c in ($cores|Sort-Object Port -Descending)){[void](Stop-Port $c.Port)}
     [void](Stop-Port 8699)
+    [void](Stop-Port 8698)
     Notify "TooruDragon" "Система остановлена. Desired state сохранён как stopped."
 }
 function Restart-System{
