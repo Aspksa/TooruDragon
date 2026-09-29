@@ -18,6 +18,7 @@ UPSTREAMS = {
     "main": "http://127.0.0.1:8700",
     "supervisor": "http://127.0.0.1:8699",
     "gateway": "http://127.0.0.1:8698",
+    "tooru_ai": "http://127.0.0.1:8698/core/tooru_ai",
 }
 
 GET_ALLOWLIST = {
@@ -39,6 +40,14 @@ GET_ALLOWLIST = {
         "/watchdog",
         "/compatibility",
         "/agents/tools",
+    ),
+    "tooru_ai": (
+        "/health",
+        "/runtime",
+        "/models",
+        "/conversations",
+        "/conversation",
+        "/memory/search",
     ),
     "supervisor": (
         "/health",
@@ -62,6 +71,10 @@ POST_ALLOWLIST = {
         "/events/dlq",
         "/agents/plan",
         "/agents/tool/invoke",
+    ),
+    "tooru_ai": (
+        "/chat",
+        "/memory/remember",
     ),
     "supervisor": (
         "/core/action",
