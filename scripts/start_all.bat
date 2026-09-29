@@ -17,6 +17,9 @@ echo [БАЗА] Инициализация общей базы данных...
 if errorlevel 1 exit /b 2
 "%PYTHON_EXE%" "scripts\desired_state.py" running --all
 if errorlevel 1 exit /b 21
+echo [GATEWAY] Проверка локального traffic gateway...
+"%PYTHON_EXE%" -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8698/health', timeout=0.5).read()" >nul 2>nul
+if errorlevel 1 start "TooruDragon - Gateway" "%PYTHON_EXE%" "gateway\app.py"
 echo [SUPERVISOR] Проверка внешнего Control Plane...
 "%PYTHON_EXE%" -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8699/health', timeout=0.5).read()" >nul 2>nul
 if errorlevel 1 start "TooruDragon - Supervisor" "%PYTHON_EXE%" "supervisor\app.py"
@@ -48,6 +51,7 @@ if errorlevel 1 (
 "%PYTHON_EXE%" "scripts\finalize_update.py" --success >nul 2>nul
 echo.
 echo [ГОТОВО] Все ядра отвечают.
+echo [АДРЕС] Gateway:       http://127.0.0.1:8698/health
 echo [АДРЕС] Supervisor:    http://127.0.0.1:8699/status
 echo [АДРЕС] Главное ядро:  http://127.0.0.1:8700
 echo [АДРЕС] Service Registry: http://127.0.0.1:8700/registry
