@@ -83,7 +83,13 @@ class DeploymentCoordinator:
             started_at=time.time(),
         )
 
-    def probe(self, candidate: Candidate, timeout_seconds: int = 15) -> dict:
+    def probe(
+        self,
+        candidate: Candidate,
+        timeout_seconds: int = 15,
+        *,
+        cleanup_on_failure: bool = True,
+    ) -> dict:
         deadline = time.monotonic() + timeout_seconds
         url = f"http://127.0.0.1:{candidate.port}/health"
         last_error = None
@@ -100,12 +106,12 @@ class DeploymentCoordinator:
             except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
                 last_error = str(exc)
             time.sleep(0.25)
-        self.terminate(candidate)
+        cleaned_up = self.terminate(candidate) if cleanup_on_failure else False
         return {
             "ok": False,
             "candidate": candidate.__dict__,
             "error": last_error or "candidate did not become ready",
-            "cleaned_up": True,
+            "cleaned_up": cleaned_up,
         }
 
     def route(self, core: str) -> dict:
