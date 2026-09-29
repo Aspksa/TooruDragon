@@ -177,7 +177,8 @@ Write-Host ""
 Write-Host "  ─────────────────────── 🚀 ЗАПУСК ──────────────────────────" -ForegroundColor Magenta
 Write-Info "Запускаю все ядра TooruDragon..."
 $startScript=Join-Path $Root "scripts\start_all.bat"
-& cmd.exe /d /c $startScript
+$cmdLine='call "{0}"' -f $startScript
+& $env:ComSpec /d /s /c $cmdLine
 if($LASTEXITCODE -ne 0){
     Write-Fail "Стартовый сценарий завершился с ошибкой: $LASTEXITCODE"
     Read-Host "Нажмите Enter для выхода";exit $LASTEXITCODE
