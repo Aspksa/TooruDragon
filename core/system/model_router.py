@@ -186,6 +186,7 @@ class ModelRouter:
                 "base_url": cfg.base_url,
                 "model": cfg.model,
                 "enabled": cfg.enabled,
+                "model_configured": bool(cfg.model),
                 "requires_secret": bool(cfg.api_key_secret),
                 "secret_available": (
                     bool(self.secrets.get(cfg.api_key_secret))
@@ -197,7 +198,9 @@ class ModelRouter:
             "default_provider": self.default_provider or None,
             "providers": providers,
             "available": any(
-                item["enabled"] and item["secret_available"]
+                item["enabled"]
+                and item["secret_available"]
+                and item["model_configured"]
                 for item in providers.values()
             ),
         }
