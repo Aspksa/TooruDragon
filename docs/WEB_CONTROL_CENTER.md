@@ -152,3 +152,80 @@ The Web server:
 
 It intentionally does not expose shell execution, arbitrary filesystem access,
 arbitrary HTTP proxying or secret values.
+
+
+## Web Control Center 2.0
+
+The v0.3.0 Control Center now includes a second operational layer focused on
+live diagnostics and execution visibility.
+
+### Live SSE events
+
+The browser opens:
+
+```text
+GET /stream/events
+```
+
+The Web server reads incremental durable events from Main Core and emits
+Server-Sent Events. Browser reconnects resume from `Last-Event-ID`, so the
+stream does not intentionally restart from the beginning.
+
+The SSE endpoint remains same-origin and the browser still never receives the
+system Bearer token.
+
+### Telemetry charts
+
+The Overview renders zero-dependency canvas charts for:
+
+- Main Core resident memory;
+- Main Core CPU usage derived from process CPU-time deltas;
+- average core health-check latency.
+
+Observability samples now include Unix timestamps. On Windows, process CPU time
+uses `GetProcessTimes` instead of the previous zero-value fallback.
+
+### Workflow Graph
+
+The Workflow page loads durable tasks, groups them by `workflow_id`, calculates
+parent depth from `parent_id` and renders an SVG dependency graph.
+
+Selecting a graph node retrieves:
+
+```text
+GET /api/task/transitions?task_id=<id>
+```
+
+and displays the durable transition audit for that task.
+
+### Agent Console
+
+The Agent page now maintains an execution transcript for real platform
+operations:
+
+- Tool Router calls;
+- Planner submissions;
+- workflow and trace identifiers;
+- errors.
+
+This is deliberately not presented as an LLM chat. The current Tooru/AI core has
+no inference/chat endpoint yet. When a model runtime is added, it can be attached
+to this console without faking responses in the current release.
+
+### Audit
+
+The Audit page aggregates:
+
+- Core Manager lifecycle history;
+- recent Durable Event Fabric activity;
+- DLQ count;
+- Event Fabric consumer lag;
+- retention-gap state.
+
+This provides a single operator view for lifecycle and event-delivery integrity.
+
+## Zero-build principle
+
+Web Control Center 2.0 still has no npm, bundler, framework or CDN dependency.
+Charts, workflow visualization and streaming are implemented with browser-native
+Canvas, SVG and EventSource APIs.
