@@ -7,6 +7,8 @@ $s=$w.CreateShortcut($link)
 $s.TargetPath=Join-Path $Root "TooruDragonLauncher.bat"
 $s.WorkingDirectory=$Root
 $s.Description="TooruDragon Launcher"
-$s.IconLocation="$env:SystemRoot\System32\shell32.dll,44"
+$icon=Join-Path $Root "assets\launcher\toorudragon.ico"
+if(-not(Test-Path $icon)){& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root "scripts\create_icon.ps1") | Out-Null}
+$s.IconLocation="$icon,0"
 $s.Save()
 Write-Host "Ярлык создан: $link" -ForegroundColor Green
