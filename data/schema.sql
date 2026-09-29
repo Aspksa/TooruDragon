@@ -103,3 +103,35 @@ CREATE TABLE IF NOT EXISTS task_transitions (
 
 CREATE INDEX IF NOT EXISTS idx_task_transitions_task
 ON task_transitions(task_id, id);
+
+
+CREATE TABLE IF NOT EXISTS durable_events (
+    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+    id TEXT NOT NULL UNIQUE,
+    topic TEXT NOT NULL,
+    source TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    trace_id TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_durable_events_topic_sequence
+ON durable_events(topic, sequence);
+
+CREATE TABLE IF NOT EXISTS event_offsets (
+    consumer TEXT PRIMARY KEY,
+    sequence INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS event_dead_letters (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id TEXT NOT NULL,
+    consumer TEXT NOT NULL,
+    error TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_dead_letters_consumer
+ON event_dead_letters(consumer, id);
