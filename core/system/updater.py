@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -26,6 +28,8 @@ class UpdateManager:
     def __init__(self, root: Path = ROOT):
         self.root = root
         self.backups = BackupManager(root)
+        self.runtime_dir = root / "runtime"
+        self.pending_path = self.runtime_dir / "pending_update.json"
 
     def _run(self, *args: str) -> subprocess.CompletedProcess:
         return subprocess.run(
@@ -45,9 +49,11 @@ class UpdateManager:
         return result.returncode == 0 and not result.stdout.strip()
 
     def _python_validation(self) -> bool:
+        python = sys.executable
+
         compile_result = subprocess.run(
             [
-                "python",
+                python,
                 "-m",
                 "compileall",
                 "-q",
@@ -65,7 +71,7 @@ class UpdateManager:
             return False
 
         init_result = subprocess.run(
-            ["python", "scripts/init_db.py"],
+            [python, "scripts/init_db.py"],
             cwd=self.root,
             text=True,
             capture_output=True,
@@ -76,6 +82,40 @@ class UpdateManager:
             return False
 
         return True
+
+    def _write_pending(
+        self,
+        backup: Path,
+        previous_head: str,
+        current_head: str,
+    ) -> None:
+        self.runtime_dir.mkdir(parents=True, exist_ok=True)
+        self.pending_path.write_text(
+            json.dumps(
+                {
+                    "backup_path": str(backup),
+                    "previous_head": previous_head,
+                    "current_head": current_head,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
+
+    def clear_pending(self) -> None:
+        self.pending_path.unlink(missing_ok=True)
+
+    def rollback_pending(self) -> bool:
+        if not self.pending_path.exists():
+            return False
+
+        payload = json.loads(self.pending_path.read_text(encoding="utf-8"))
+        backup = Path(payload["backup_path"])
+        restored = self.backups.restore(backup, restore_git=True)
+        if restored:
+            self.clear_pending()
+        return restored
 
     def update(self, branch: str = "main", remote: str = "origin") -> UpdateResult:
         logger.info("Safe update started: %s/%s", remote, branch)
@@ -114,15 +154,16 @@ class UpdateManager:
 
         pull = self._run("git", "pull", "--ff-only", remote, branch)
         if pull.returncode != 0:
-            self.backups.restore(backup, restore_git=True)
+            restored = self.backups.restore(backup, restore_git=True)
             return UpdateResult(
                 ok=False,
                 changed=False,
-                rolled_back=True,
+                rolled_back=restored,
                 backup_path=str(backup),
                 previous_head=previous_head,
                 current_head=self._head(),
-                message=f"Обновление не применено; выполнен rollback: {pull.stderr.strip()}",
+                message="git pull завершился ошибкой. "
+                + ("Выполнен rollback." if restored else "Rollback не выполнен."),
             )
 
         current_head = self._head()
@@ -139,6 +180,7 @@ class UpdateManager:
                 + ("Выполнен rollback." if restored else "Rollback завершился ошибкой."),
             )
 
+        self._write_pending(backup, previous_head, current_head)
         logger.info("Safe update completed: %s -> %s", previous_head, current_head)
         return UpdateResult(
             ok=True,
@@ -147,7 +189,7 @@ class UpdateManager:
             backup_path=str(backup),
             previous_head=previous_head,
             current_head=current_head,
-            message="Обновление успешно установлено и проверено.",
+            message="Обновление установлено. Ожидается финальный health-check после запуска.",
         )
 
 
