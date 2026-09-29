@@ -96,5 +96,11 @@
   "agent_runtime": {
     "enabled": true,
     "max_plan_steps": 32
+  },
+  "gateway": {
+    "enabled": true,
+    "host": "127.0.0.1",
+    "port": 8698,
+    "use_for_main_probes": true
   }
 }
