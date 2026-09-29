@@ -124,7 +124,7 @@ function renderCores() {
     root.innerHTML = '<div class="empty card">Main Core недоступен</div>';
     return;
   }
-  root.innerHTML = Object.entries(cores).map(([key,c]) => {
+  const html = Object.entries(cores).map(([key,c]) => {
     const [icon,name] = coreNames[key] || ["⚙",key];
     return `<article class="card core-card">
       <div class="core-head">
@@ -144,6 +144,9 @@ function renderCores() {
       </div>
     </article>`;
   }).join("");
+  root.innerHTML = html;
+  const secondary = $("#core-grid-secondary");
+  if (secondary) secondary.innerHTML = html;
 }
 
 async function coreAction(core, action) {
@@ -329,6 +332,9 @@ window.deploymentAction=deploymentAction;
 window.loadAgent=loadAgent;
 window.invokeAgentTool=invokeAgentTool;
 window.submitPlan=submitPlan;
+window.loadTasks=loadTasks;
+window.loadEvents=loadEvents;
+window.loadControlPlane=loadControlPlane;
 
 loadDashboard();
 setInterval(loadDashboard, 5000);
