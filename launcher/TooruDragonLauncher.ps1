@@ -154,17 +154,30 @@ $quote.Controls.Add((L "Я рядом. 🐉" 18 123 160 28 11 $pink ([Drawing.Fo
 $home=$pages["Главная"]
 $hero=P 18 18 1110 230 ([Drawing.Color]::FromArgb(25,17,46))
 $home.Controls.Add($hero)
-$hero.Controls.Add((L "TooruDragon" 30 28 520 55 31 $text ([Drawing.FontStyle]::Bold)))
-$hero.Controls.Add((L "ВАШ ЛИЧНЫЙ МИР. ВАШ ИИ. ВАШ ДРАКОН." 33 85 650 28 11 $pink ([Drawing.FontStyle]::Bold)))
-$hero.Controls.Add((L "«Я рядом, господин. Всё готово к запуску.»" 33 132 650 34 13 $text))
-$hero.Controls.Add((L "Главная панель управления системой" 33 175 550 28 10 $muted))
+
+$artPath=Join-Path $Root "assets\launcher\tooru-maid.png"
+if(Test-Path $artPath){
+    try{
+        $hero.BackgroundImage=[Drawing.Image]::FromFile($artPath)
+        $hero.BackgroundImageLayout=[Windows.Forms.ImageLayout]::Zoom
+    }catch{}
+}
+
+$shade=P 0 0 1110 230 ([Drawing.Color]::FromArgb(170,9,12,23))
+$shade.Dock=[Windows.Forms.DockStyle]::Fill
+$hero.Controls.Add($shade)
+
+$shade.Controls.Add((L "TooruDragon" 30 28 520 55 31 $text ([Drawing.FontStyle]::Bold)))
+$shade.Controls.Add((L "ВАШ ЛИЧНЫЙ МИР. ВАШ ИИ. ВАШ ДРАКОН." 33 85 650 28 11 $pink ([Drawing.FontStyle]::Bold)))
+$shade.Controls.Add((L "«Я рядом, господин. Всё готово к запуску.»" 33 132 650 34 13 $text))
+$shade.Controls.Add((L "Главная панель управления системой" 33 175 550 28 10 $muted))
 
 $clock=L "" 840 45 230 62 28 $text ([Drawing.FontStyle]::Bold)
 $clock.TextAlign=[Drawing.ContentAlignment]::MiddleRight
-$hero.Controls.Add($clock)
+$shade.Controls.Add($clock)
 $date=L "" 840 108 230 28 10 $muted
 $date.TextAlign=[Drawing.ContentAlignment]::MiddleRight
-$hero.Controls.Add($date)
+$shade.Controls.Add($date)
 
 $actions=P 18 263 1110 84 $panel
 $home.Controls.Add($actions)
@@ -252,8 +265,13 @@ foreach($c in $cores){
     $op=B "◎ Открыть" 945 19 120 44 $c.Color
     $st.Tag=$c;$sp.Tag=$c;$op.Tag=$c.Port
     $st.Add_Click({
-        $path=Join-Path $Root ($this.Tag.Key -eq "laboratory" ? "core\workshop\start.bat" : ("core\"+$this.Tag.Key+"\start.bat"))
-        if($this.Tag.Key -eq "tooru_ai"){$path=Join-Path $Root "core\tooru_ai\start.bat"}
+        if($this.Tag.Key -eq "laboratory"){
+            $path=Join-Path $Root "core\workshop\start.bat"
+        }elseif($this.Tag.Key -eq "tooru_ai"){
+            $path=Join-Path $Root "core\tooru_ai\start.bat"
+        }else{
+            $path=Join-Path $Root ("core\"+$this.Tag.Key+"\start.bat")
+        }
         if(Test-Path $path){Start-Process "cmd.exe" -ArgumentList @("/k",$path) -WorkingDirectory $Root}
     })
     $sp.Add_Click({[void](Stop-Port $this.Tag.Port)})
