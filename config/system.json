@@ -53,7 +53,8 @@
     ],
     "tooru_ai": [
       "workflow.create",
-      "workflow.read"
+      "workflow.read",
+      "system.observe"
     ],
     "laboratory": [
       "workflow.create",
