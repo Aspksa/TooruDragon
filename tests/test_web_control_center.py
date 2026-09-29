@@ -12,6 +12,8 @@ class WebControlCenterProxyTests(unittest.TestCase):
         self.assertTrue(_allowed("GET", "main", "/observability"))
         self.assertTrue(_allowed("GET", "tooru_ai", "/runtime"))
         self.assertTrue(_allowed("GET", "tooru_ai", "/memory/search?q=gateway"))
+        self.assertTrue(_allowed("GET", "tooru_ai", "/rag/search?q=gateway"))
+        self.assertTrue(_allowed("GET", "tooru_ai", "/rag/documents"))
         self.assertTrue(_allowed("GET", "main", "/api/task/transitions?task_id=abc"))
 
     def test_control_actions_are_explicitly_allowlisted(self):
@@ -20,6 +22,7 @@ class WebControlCenterProxyTests(unittest.TestCase):
         self.assertTrue(_allowed("POST", "main", "/agents/tool/invoke"))
         self.assertTrue(_allowed("POST", "tooru_ai", "/chat"))
         self.assertTrue(_allowed("POST", "tooru_ai", "/memory/remember"))
+        self.assertTrue(_allowed("POST", "tooru_ai", "/rag/ingest"))
 
     def test_arbitrary_local_proxying_is_rejected(self):
         self.assertFalse(_allowed("GET", "main", "/system"))
