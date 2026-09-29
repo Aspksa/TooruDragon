@@ -116,6 +116,13 @@ class CoreManager:
             (name, status, self._utcnow()),
         )
 
+    def set_desired_state(self, name: str, status: str) -> None:
+        if name not in self.cores:
+            raise KeyError(name)
+        if status not in {"running", "stopped"}:
+            raise ValueError("desired state must be running or stopped")
+        self._set_desired(name, status)
+
     def desired_state(self, name: str) -> str:
         rows = self.db.query(
             "SELECT status FROM core_state WHERE core_name=?",
