@@ -205,8 +205,7 @@ def recovery_loop() -> None:
                 failures[name] = 0
                 continue
 
-            status = manager.status(name)
-            if status.get("online"):
+            if manager.is_online(name):
                 failures[name] = 0
                 continue
 
