@@ -39,14 +39,21 @@ class OpenAICompatibleProvider:
         if not model:
             raise ModelProviderError(f"provider_model_missing:{self.config.name}")
 
+        temperature = float(overrides.get("temperature", self.config.temperature))
+        if not 0.0 <= temperature <= 2.0:
+            raise ModelProviderError("temperature_out_of_range")
+
         payload: dict[str, Any] = {
             "model": model,
             "messages": messages,
-            "temperature": float(overrides.get("temperature", self.config.temperature)),
+            "temperature": temperature,
         }
         max_tokens = overrides.get("max_tokens", self.config.max_tokens)
         if max_tokens is not None:
-            payload["max_tokens"] = int(max_tokens)
+            max_tokens = int(max_tokens)
+            if not 1 <= max_tokens <= 131072:
+                raise ModelProviderError("max_tokens_out_of_range")
+            payload["max_tokens"] = max_tokens
 
         url = self.config.base_url.rstrip("/") + "/chat/completions"
         headers = {
