@@ -372,6 +372,7 @@ def task_claim(request):
                 )
             ),
             kinds=kinds,
+            allowed_capabilities=policy_engine.allowed_capabilities(worker_id),
         )
     except (ValueError, TypeError) as exc:
         return 400, {"error": "invalid_claim", "message": str(exc)}
