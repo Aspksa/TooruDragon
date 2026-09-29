@@ -143,3 +143,42 @@ CREATE TABLE IF NOT EXISTS deployment_state (
     previous_json TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
+
+
+CREATE TABLE IF NOT EXISTS ai_conversations (
+    id TEXT PRIMARY KEY,
+    title TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_conversations_updated
+ON ai_conversations(updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS ai_messages (
+    id TEXT PRIMARY KEY,
+    conversation_id TEXT NOT NULL,
+    role TEXT NOT NULL,
+    content TEXT NOT NULL,
+    provider TEXT,
+    model TEXT,
+    trace_id TEXT,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(conversation_id) REFERENCES ai_conversations(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_messages_conversation
+ON ai_messages(conversation_id, created_at);
+
+CREATE TABLE IF NOT EXISTS ai_memory_items (
+    id TEXT PRIMARY KEY,
+    scope TEXT NOT NULL,
+    content TEXT NOT NULL,
+    source TEXT NOT NULL,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_memory_scope_created
+ON ai_memory_items(scope, created_at DESC);
