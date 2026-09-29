@@ -1,5 +1,5 @@
 {
-  "version": "0.2.0-alpha",
+  "version": "0.3.0-alpha",
   "database": {
     "engine": "sqlite",
     "path": "data/toorudragon.db"
@@ -74,5 +74,21 @@
       "workflow.create",
       "workflow.read"
     ]
+  },
+  "supervisor": {
+    "host": "127.0.0.1",
+    "port": 8699,
+    "interval_seconds": 5,
+    "failure_threshold": 3
+  },
+  "event_fabric": {
+    "retention": 10000
+  },
+  "observability": {
+    "enabled": true,
+    "max_samples": 300
+  },
+  "agent_runtime": {
+    "enabled": true
   }
 }
