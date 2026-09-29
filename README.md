@@ -153,9 +153,9 @@ Python не устанавливается в Windows и не изменяет �
 
 Поэтому русские названия, сообщения, JSON и Python-файлы проходят отдельную проверку до запуска.
 
-### ✨ Web UI
+### ✨ Web Control Center
 
-Web-панель на `http://127.0.0.1:8710` также русифицирована и показывает ядра с визуальными значками и статусами:
+Web Control Center на `http://127.0.0.1:8710` русифицирован и предоставляет полный интерфейс управления системой. Ядра отображаются с визуальными значками и статусами:
 - 🐉 Tooru/AI;
 - 🧪 Лаборатория;
 - 🏠 Дом;
@@ -492,3 +492,33 @@ legacy-портам `8701–8705` короткий рестарт по-преж�
 и Web UI `8710` пока также не имеют полного Blue/Green fronting.
 
 Подробности: `docs/PLATFORM_V03.md`.
+
+
+## 🌐 Web Control Center v0.3.0
+
+Web-интерфейс на `http://127.0.0.1:8710` теперь является полноценным локальным
+Control Center.
+
+Разделы:
+
+- **Обзор** — system health, ядра, память, события, uptime;
+- **Ядра** — Start / Restart / Stop через External Supervisor и Safe Mode;
+- **Задачи** — Durable Workflow Engine и создание задач;
+- **События** — Durable Event Fabric;
+- **Агент** — разрешённые tools, tool invocation и plan → workflow;
+- **Control Plane** — Supervisor, Gateway, consumers и Blue/Green deployments.
+
+Браузер не хранит Bearer token и не ходит напрямую к портам `8700/8699/8698`.
+Локальный Web Server использует allowlisted same-origin proxy и при необходимости
+добавляет `TOORUDRAGON_API_TOKEN` на серверной стороне.
+
+Управляющие POST-запросы принимаются только как JSON и только от доверенного
+origin Web Control Center. Произвольного localhost-proxy нет.
+
+Health endpoint Web Control Center:
+
+```text
+GET http://127.0.0.1:8710/health
+```
+
+Подробности: `docs/WEB_CONTROL_CENTER.md`.
