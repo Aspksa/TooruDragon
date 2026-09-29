@@ -127,9 +127,18 @@ class WorkflowEngine:
         lease_until = iso(now_dt + timedelta(seconds=max(5, int(lease_seconds))))
 
         where = """
-            state IN ('queued', 'retrying')
-            AND available_at <= ?
-            AND (lease_until IS NULL OR lease_until < ?)
+            tasks.state IN ('queued', 'retrying')
+            AND tasks.available_at <= ?
+            AND (tasks.lease_until IS NULL OR tasks.lease_until < ?)
+            AND (
+                tasks.parent_id IS NULL
+                OR EXISTS (
+                    SELECT 1
+                    FROM tasks AS parent
+                    WHERE parent.id = tasks.parent_id
+                      AND parent.state = 'completed'
+                )
+            )
         """
         params: list = [now, now]
         if kinds:
@@ -150,9 +159,9 @@ class WorkflowEngine:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute(
                 f"""
-                SELECT * FROM tasks
+                SELECT tasks.* FROM tasks
                 WHERE {where}
-                ORDER BY priority ASC, created_at ASC
+                ORDER BY tasks.priority ASC, tasks.created_at ASC
                 LIMIT 1
                 """,
                 tuple(params),
@@ -228,6 +237,46 @@ class WorkflowEngine:
             self._transition(db, task_id, task["state"], "completed", message="task_completed")
         return self.get(task_id)
 
+    def _cancel_descendants(self, db, parent_id: str, reason: str) -> int:
+        pending = [parent_id]
+        cancelled = 0
+        while pending:
+            current = pending.pop()
+            children = db.execute(
+                """
+                SELECT id, state
+                FROM tasks
+                WHERE parent_id=?
+                  AND state NOT IN ('completed','failed','cancelled')
+                """,
+                (current,),
+            ).fetchall()
+            for child in children:
+                child_id = child["id"]
+                child_state = child["state"]
+                db.execute(
+                    """
+                    UPDATE tasks
+                    SET state='cancelled',
+                        error=?,
+                        lease_owner=NULL,
+                        lease_until=NULL,
+                        updated_at=?
+                    WHERE id=?
+                    """,
+                    (reason, iso(), child_id),
+                )
+                self._transition(
+                    db,
+                    child_id,
+                    child_state,
+                    "cancelled",
+                    message=reason,
+                )
+                pending.append(child_id)
+                cancelled += 1
+        return cancelled
+
     def fail(
         self,
         task_id: str,
@@ -258,6 +307,12 @@ class WorkflowEngine:
                 (target, error, available_at, iso(), task_id),
             )
             self._transition(db, task_id, task["state"], target, message=error[:1000])
+            if target == "failed":
+                self._cancel_descendants(
+                    db,
+                    task_id,
+                    reason=f"dependency_failed:{task_id}",
+                )
 
         return self.get(task_id)
 
@@ -280,6 +335,11 @@ class WorkflowEngine:
                 (reason, iso(), task_id),
             )
             self._transition(db, task_id, task["state"], "cancelled", message=reason)
+            self._cancel_descendants(
+                db,
+                task_id,
+                reason=f"dependency_cancelled:{task_id}",
+            )
         return self.get(task_id)
 
     def requeue_expired(self) -> int:
