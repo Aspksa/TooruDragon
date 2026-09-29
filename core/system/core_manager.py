@@ -78,7 +78,7 @@ class CoreManager:
             return None
 
         pattern = re.compile(
-            rf"^s*TCPs+S*:{port}s+S+s+LISTENINGs+(d+)s*$",
+            rf"^\\s*TCP\\s+\\S*:{port}\\s+\\S+\\s+LISTENING\\s+(\\d+)\\s*$",
             re.IGNORECASE,
         )
         for line in result.stdout.splitlines():
