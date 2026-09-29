@@ -143,17 +143,17 @@ class WorkflowEngine:
         params: list = [now, now]
         if kinds:
             placeholders = ",".join("?" for _ in kinds)
-            where += f" AND kind IN ({placeholders})"
+            where += f" AND tasks.kind IN ({placeholders})"
             params.extend(kinds)
 
         if allowed_capabilities is not None:
             capabilities = sorted(allowed_capabilities)
             if capabilities:
                 placeholders = ",".join("?" for _ in capabilities)
-                where += f" AND (required_capability IS NULL OR required_capability IN ({placeholders}))"
+                where += f" AND (tasks.required_capability IS NULL OR tasks.required_capability IN ({placeholders}))"
                 params.extend(capabilities)
             else:
-                where += " AND required_capability IS NULL"
+                where += " AND tasks.required_capability IS NULL"
 
         with self.db.connect() as db:
             db.execute("BEGIN IMMEDIATE")
