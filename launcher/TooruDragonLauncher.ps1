@@ -228,7 +228,7 @@ $hero=P 18 18 1110 230 ([Drawing.Color]::FromArgb(25,17,46))
 $home.Controls.Add($hero)
 
 $artPath=Join-Path $Root "assets\launcher\tooru-maid.jpg"
-$artEncoded=Join-Path $Root "assets\launcher\tooru-maid.jpg.b64"
+$artEncoded=Join-Path $Root "assets\launcher\tooru-maid-mini.jpg.b64"
 if((-not(Test-Path $artPath)) -and (Test-Path $artEncoded)){
     try{
         $raw=(Get-Content $artEncoded -Raw -Encoding ASCII).Trim()
