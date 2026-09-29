@@ -16,6 +16,10 @@ from core.system import CoreRuntime, Route
 from core.system.compatibility import CompatibilityManager
 from core.system.core_manager import CoreManager
 from core.system.event_bus import EventBus
+from core.system.policy import PolicyEngine
+from core.system.secrets import SecretStore
+from core.system.supervisor import SupervisorFacade
+from core.system.workflow import WorkflowEngine
 from core.system.service_registry import ServiceRegistry
 from core.system.watchdog import Watchdog
 
@@ -26,6 +30,9 @@ MAIN_CAPABILITIES = [
     "event_bus",
     "compatibility",
     "updates",
+    "workflow_engine",
+    "policy_engine",
+    "supervisor_boundary",
 ]
 
 runtime = CoreRuntime(
@@ -50,6 +57,10 @@ core_manager = CoreManager(
     cores=runtime.cores,
     root=ROOT,
 )
+workflow_engine = WorkflowEngine(runtime.db)
+policy_engine = PolicyEngine(runtime.config.get("policy", {}))
+secret_store = SecretStore()
+supervisor = SupervisorFacade(architecture_version="0.2")
 
 registry_config = runtime.config.get("service_registry", {})
 service_registry = ServiceRegistry(
@@ -136,6 +147,12 @@ def routes(_request):
             "/api/cores": "Core Manager: статусы всех ядер",
             "/api/core/action": "Core Manager: start/stop/restart ядра",
             "/api/core/history": "История управляющих действий",
+            "/platform": "Состояние Control Plane v0.2",
+            "/api/tasks": "Список durable-задач",
+            "/api/task/create": "Создать durable-задачу",
+            "/api/task/claim": "Захватить задачу worker-ом",
+            "/api/task/update": "Обновить состояние задачи",
+            "/api/task/transitions": "История переходов задачи",
         },
     }
 
@@ -275,6 +292,160 @@ def core_history(request):
     }
 
 
+
+def platform_status(_request):
+    return 200, {
+        "service": "main",
+        "architecture": "control-plane-v0.2",
+        "supervisor": supervisor.snapshot(),
+        "policy": policy_engine.snapshot(),
+        "secrets": secret_store.metadata(),
+        "workflow": {
+            "durable": True,
+            "lease_based": True,
+        },
+    }
+
+
+def tasks(request):
+    state = request.query.get("state", [None])[0]
+    workflow_id = request.query.get("workflow_id", [None])[0]
+    raw_limit = request.query.get("limit", ["100"])[0]
+    try:
+        limit = int(raw_limit)
+        items = workflow_engine.list_tasks(
+            state=state,
+            workflow_id=workflow_id,
+            limit=limit,
+        )
+    except (ValueError, TypeError) as exc:
+        return 400, {"error": "invalid_query", "message": str(exc)}
+
+    return 200, {"service": "main", "tasks": items}
+
+
+def task_create(request):
+    payload = request.json if isinstance(request.json, dict) else {}
+    try:
+        task = workflow_engine.create_task(
+            kind=str(payload.get("kind", "")).strip(),
+            payload=payload.get("payload", {}),
+            workflow_id=payload.get("workflow_id"),
+            parent_id=payload.get("parent_id"),
+            priority=int(payload.get("priority", 100)),
+            max_attempts=int(payload.get("max_attempts", 3)),
+            idempotency_key=payload.get("idempotency_key"),
+            available_at=payload.get("available_at"),
+            trace_id=payload.get("trace_id"),
+            required_capability=payload.get("required_capability"),
+        )
+    except (ValueError, TypeError) as exc:
+        return 400, {"error": "invalid_task", "message": str(exc)}
+
+    event_bus.publish(
+        "workflow.task.created",
+        "main",
+        {
+            "task_id": task["id"],
+            "workflow_id": task["workflow_id"],
+            "kind": task["kind"],
+            "trace_id": task["trace_id"],
+        },
+    )
+    return 201, {"task": task}
+
+
+def task_claim(request):
+    payload = request.json if isinstance(request.json, dict) else {}
+    worker_id = str(payload.get("worker_id", "")).strip()
+    kinds = payload.get("kinds")
+    if kinds is not None and not isinstance(kinds, list):
+        return 400, {"error": "kinds_must_be_array"}
+
+    try:
+        task = workflow_engine.claim(
+            worker_id=worker_id,
+            lease_seconds=int(
+                payload.get(
+                    "lease_seconds",
+                    runtime.config.get("workflow", {}).get("lease_seconds", 60),
+                )
+            ),
+            kinds=kinds,
+        )
+    except (ValueError, TypeError) as exc:
+        return 400, {"error": "invalid_claim", "message": str(exc)}
+
+    return 200, {"task": task}
+
+
+def task_update(request):
+    payload = request.json if isinstance(request.json, dict) else {}
+    task_id = str(payload.get("task_id", "")).strip()
+    worker_id = str(payload.get("worker_id", "")).strip()
+    action = str(payload.get("action", "")).strip().lower()
+
+    try:
+        if action == "running":
+            task = workflow_engine.mark_running(task_id, worker_id)
+        elif action == "heartbeat":
+            task = workflow_engine.heartbeat(
+                task_id,
+                worker_id,
+                lease_seconds=int(payload.get("lease_seconds", 60)),
+            )
+        elif action == "complete":
+            task = workflow_engine.complete(
+                task_id,
+                worker_id,
+                result=payload.get("result", {}),
+            )
+        elif action == "fail":
+            task = workflow_engine.fail(
+                task_id,
+                worker_id,
+                str(payload.get("error", "task_failed")),
+                retry_delay_seconds=int(payload.get("retry_delay_seconds", 5)),
+            )
+        elif action == "cancel":
+            task = workflow_engine.cancel(
+                task_id,
+                reason=str(payload.get("reason", "cancelled")),
+            )
+        else:
+            return 400, {
+                "error": "unsupported_task_action",
+                "allowed": ["running", "heartbeat", "complete", "fail", "cancel"],
+            }
+    except KeyError:
+        return 404, {"error": "task_not_found", "task_id": task_id}
+    except (ValueError, TypeError, RuntimeError) as exc:
+        return 409, {"error": "task_transition_failed", "message": str(exc)}
+
+    event_bus.publish(
+        "workflow.task.transition",
+        "main",
+        {
+            "task_id": task["id"],
+            "workflow_id": task["workflow_id"],
+            "state": task["state"],
+            "trace_id": task["trace_id"],
+        },
+    )
+    return 200, {"task": task}
+
+
+def task_transitions(request):
+    task_id = str(request.query.get("task_id", [""])[0]).strip()
+    if not task_id:
+        return 400, {"error": "task_id_required"}
+    try:
+        history = workflow_engine.transitions(task_id)
+    except Exception as exc:
+        return 500, {"error": "history_failed", "message": str(exc)}
+    return 200, {"task_id": task_id, "transitions": history}
+
+
 def core_alias(name: str, action: str):
     def handler(_request):
         result = getattr(core_manager, action)(name)
@@ -294,6 +465,12 @@ def core_alias(name: str, action: str):
 
 
 if __name__ == "__main__":
+    runtime.db.initialize(runtime.version)
+    if bool(runtime.config.get("workflow", {}).get("requeue_expired_on_start", True)):
+        recovered = workflow_engine.requeue_expired()
+        if recovered:
+            runtime.logger.warning("Requeued %s expired workflow tasks", recovered)
+
     threading.Thread(
         target=main_registry_heartbeat,
         name="registry-main",
@@ -325,6 +502,12 @@ if __name__ == "__main__":
         "/api/cores": Route(managed_cores, protected=False),
         "/api/core/action": Route(core_action, method="POST", protected=True),
         "/api/core/history": Route(core_history, protected=True),
+        "/platform": Route(platform_status, protected=False),
+        "/api/tasks": Route(tasks, protected=True),
+        "/api/task/create": Route(task_create, method="POST", protected=True),
+        "/api/task/claim": Route(task_claim, method="POST", protected=True),
+        "/api/task/update": Route(task_update, method="POST", protected=True),
+        "/api/task/transitions": Route(task_transitions, protected=True),
     }
 
     for core_name in runtime.cores:
