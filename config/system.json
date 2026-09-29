@@ -131,6 +131,12 @@
           "max_tokens": 2048
         }
       }
+    },
+    "rag_limit": 6,
+    "rag": {
+      "enabled": true,
+      "chunk_size": 1200,
+      "chunk_overlap": 150
     }
   }
 }
