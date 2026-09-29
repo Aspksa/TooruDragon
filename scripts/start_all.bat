@@ -13,6 +13,8 @@ echo.
 echo [БАЗА] Инициализация общей базы данных...
 "%PYTHON_EXE%" "scripts\init_db.py"
 if errorlevel 1 exit /b 2
+echo [SUPERVISOR] Запуск внешнего Control Plane...
+start "TooruDragon - Supervisor" cmd /k "chcp 65001>nul && set PYTHONUTF8=1 && set PYTHONIOENCODING=utf-8 && \"%PYTHON_EXE%\" \"supervisor\app.py\""
 echo [ЯДРО] Запуск Tooru/AI...
 start "TooruDragon - Tooru AI" cmd /k "chcp 65001>nul && set PYTHONUTF8=1 && set PYTHONIOENCODING=utf-8 && "core\tooru_ai\start.bat""
 echo [ЯДРО] Запуск Лаборатории Tooru/AI...
@@ -41,6 +43,7 @@ if errorlevel 1 (
 "%PYTHON_EXE%" "scripts\finalize_update.py" --success >nul 2>nul
 echo.
 echo [ГОТОВО] Все ядра отвечают.
+echo [АДРЕС] Supervisor:    http://127.0.0.1:8699/status
 echo [АДРЕС] Главное ядро:  http://127.0.0.1:8700
 echo [АДРЕС] Service Registry: http://127.0.0.1:8700/registry
 echo [АДРЕС] Tooru/AI:       http://127.0.0.1:8701
