@@ -15,6 +15,7 @@ from core.system.secrets import SecretStore
 
 CAPABILITIES = [
     "dialog",
+    "stateless_inference",
     "memory",
     "models",
     "tools",
@@ -79,11 +80,60 @@ def models(_request):
     }
 
 
+def inference(request):
+    payload = request.json if isinstance(request.json, dict) else {}
+    prompt = str(payload.get("prompt", "")).strip()
+    if not prompt:
+        return 400, {"error": "prompt_required"}
+    max_chars = int(ai_cfg.get("max_message_chars", 65536))
+    if len(prompt) > max_chars:
+        return 413, {"error": "prompt_too_large", "max_chars": max_chars}
+
+    messages = []
+    system_prompt = str(payload.get("system_prompt", "")).strip()
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
+
+    try:
+        result = model_router.chat(
+            messages,
+            provider=payload.get("provider"),
+            model=payload.get("model"),
+            temperature=(
+                float(payload["temperature"])
+                if payload.get("temperature") is not None
+                else None
+            ),
+            max_tokens=(
+                int(payload["max_tokens"])
+                if payload.get("max_tokens") is not None
+                else None
+            ),
+        )
+    except ModelProviderError as exc:
+        return 503, {
+            "error": "provider_unavailable",
+            "message": str(exc),
+            "models": model_router.status(),
+        }
+    except (ValueError, TypeError) as exc:
+        return 400, {"error": "invalid_inference_request", "message": str(exc)}
+
+    return 200, {
+        "service": "tooru_ai",
+        "inference": result,
+    }
+
+
 def chat(request):
     payload = request.json if isinstance(request.json, dict) else {}
     message = str(payload.get("message", "")).strip()
     if not message:
         return 400, {"error": "message_required"}
+    max_chars = int(ai_cfg.get("max_message_chars", 65536))
+    if len(message) > max_chars:
+        return 413, {"error": "message_too_large", "max_chars": max_chars}
 
     try:
         result = chat_runtime.chat(
@@ -182,6 +232,9 @@ def rag_ingest(request):
     text = str(payload.get("text", "")).strip()
     if not text:
         return 400, {"error": "text_required"}
+    max_chars = int(ai_cfg.get("max_document_chars", 2000000))
+    if len(text) > max_chars:
+        return 413, {"error": "document_too_large", "max_chars": max_chars}
     try:
         document = rag.ingest(
             text,
@@ -267,6 +320,7 @@ if __name__ == "__main__":
         "/runtime": Route(runtime_status, protected=False),
         "/models": Route(models, protected=False),
         "/chat": Route(chat, method="POST", protected=True),
+        "/inference": Route(inference, method="POST", protected=True),
         "/conversations": Route(conversations, protected=True),
         "/conversation": Route(conversation, protected=True),
         "/memory/remember": Route(memory_remember, method="POST", protected=True),
