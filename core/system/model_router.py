@@ -154,7 +154,7 @@ class ModelRouter:
         temperature: float | None = None,
         max_tokens: int | None = None,
     ) -> dict:
-        selected = (provider or self.default_provider).strip()
+        selected = str(provider or self.default_provider).strip()
         if not selected:
             raise ModelProviderError("provider_not_configured")
         implementation = self.providers.get(selected)
