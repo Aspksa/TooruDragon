@@ -8,20 +8,23 @@ sys.path.insert(0, str(ROOT))
 
 from core.system import CoreRuntime, Route
 
+CAPABILITIES = [
+    "home_automation",
+    "personal_tasks",
+    "local_devices",
+]
+
 runtime = CoreRuntime(
     "home",
     "Домашнее ядро: бытовые сценарии, автоматизация и персональные задачи",
+    capabilities=CAPABILITIES,
 )
 
 
 def capabilities(_request):
     return 200, {
         "service": "home",
-        "capabilities": [
-            "home_automation",
-            "personal_tasks",
-            "local_devices",
-        ],
+        "capabilities": CAPABILITIES,
     }
 
 
