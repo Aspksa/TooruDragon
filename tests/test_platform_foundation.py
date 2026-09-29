@@ -8,6 +8,7 @@ from core.system.contracts import Envelope, validate_envelope
 from core.system.agent_runtime import AgentRuntime, Tool, ToolRouter
 from core.system.database import Database
 from core.system.event_fabric import EventFabric
+from core.system.observability import Observability
 from core.system.policy import PolicyEngine
 from core.system.workflow import WorkflowEngine
 
@@ -217,6 +218,27 @@ class EventFabricTests(unittest.TestCase):
 
         self.fabric.dead_letter(second["id"], "consumer-a", "boom")
         self.assertEqual(self.fabric.stats()["dead_letters"], 1)
+
+    def test_incremental_event_read(self):
+        first = self.fabric.publish("stream.test", "test", {"n": 1})
+        second = self.fabric.publish("stream.test", "test", {"n": 2})
+        items = self.fabric.recent(
+            limit=10,
+            after_sequence=first["sequence"],
+        )
+        self.assertEqual([item["id"] for item in items], [second["id"]])
+
+
+
+class ObservabilityTests(unittest.TestCase):
+    def test_samples_include_timestamp_and_history(self):
+        obs = Observability(max_samples=10)
+        first = obs.sample()
+        second = obs.snapshot()
+        self.assertGreater(first["timestamp"], 0)
+        self.assertIn("rss_bytes", first)
+        self.assertGreaterEqual(len(second["recent"]), 2)
+
 
 
 class AgentRuntimeTests(unittest.TestCase):
