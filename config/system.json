@@ -137,6 +137,8 @@
       "enabled": true,
       "chunk_size": 1200,
       "chunk_overlap": 150
-    }
+    },
+    "max_message_chars": 65536,
+    "max_document_chars": 2000000
   }
 }
