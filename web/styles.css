@@ -160,3 +160,28 @@ pre.json{
   .topbar{align-items:flex-start}
   .hero-title{font-size:27px}
 }
+
+.chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.chart-title{font-size:12px;color:var(--muted);margin-bottom:8px}
+canvas{width:100%;display:block}
+.compact-select{border:1px solid var(--line);background:var(--panel3);color:var(--text);border-radius:10px;padding:9px 11px}
+.workflow-canvas-wrap{overflow:auto}
+.workflow-graph{width:100%;min-width:760px;min-height:420px;background:radial-gradient(circle at center,rgba(169,108,255,.05),transparent 50%)}
+.workflow-edge{stroke:#46517f;stroke-width:2;fill:none}
+.workflow-node rect{fill:#141a2e;stroke:#394268;stroke-width:1.5;rx:12}
+.workflow-node.completed rect{stroke:var(--green)}
+.workflow-node.failed rect,.workflow-node.cancelled rect{stroke:var(--red)}
+.workflow-node.running rect,.workflow-node.claimed rect{stroke:var(--cyan)}
+.workflow-node text{fill:var(--text);font-size:12px}
+.workflow-node .sub{fill:var(--muted);font-size:10px}
+.stack-list{display:grid;gap:8px}
+.stack-item{padding:10px 12px;border:1px solid var(--line);border-radius:11px;background:var(--panel3);cursor:pointer}
+.stack-item:hover{border-color:#4a5688}
+.console{max-height:280px;overflow:auto;background:#090d19;border:1px solid var(--line);border-radius:12px;padding:12px;font-family:"Cascadia Code",Consolas,monospace;font-size:11px}
+.console-entry{padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+.console-entry:last-child{border-bottom:0}
+.console-role{font-weight:800;color:var(--cyan);margin-right:8px}
+.console-role.system{color:var(--purple)}
+.console-role.error{color:var(--red)}
+.audit-metrics{margin-bottom:14px}
+@media(max-width:1050px){.chart-grid{grid-template-columns:1fr}}
