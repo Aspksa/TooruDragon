@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .auth import AuthService
-from .config import core_address, system_config, version
+from .config import core_address, cores_config, system_config, version
 from .database import Database
 from .logging import get_logger
 from .server import Request, Route, run_server
@@ -14,6 +14,11 @@ class CoreRuntime:
         self.version = version()
         self.host, self.port = core_address(name)
         self.config = system_config()
+
+        registry = cores_config()
+        self.config_host = registry.get("host", "127.0.0.1")
+        self.cores = dict(registry.get("cores", {}))
+
         self.logger = get_logger(name)
         self.db = Database()
 
