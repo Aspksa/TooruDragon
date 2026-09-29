@@ -1,0 +1,13 @@
+{
+  "portable_python": {
+    "version": "3.14.7",
+    "source": "python.org",
+    "note": "Официальные Windows embeddable packages с обязательной проверкой SHA-256."
+  },
+  "encoding": {
+    "console": "UTF-8",
+    "python_utf8": true,
+    "language": "ru-RU"
+  },
+  "portable": true
+}
