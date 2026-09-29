@@ -57,6 +57,16 @@ function Supervisor-Post([string]$Path,[hashtable]$Body){
     }
 }
 
+function Supervisor-Get([string]$Path){
+    try{
+        $headers=@{}
+        if($env:TOORUDRAGON_API_TOKEN){$headers["Authorization"]="Bearer "+$env:TOORUDRAGON_API_TOKEN}
+        return Invoke-RestMethod -Uri ("http://127.0.0.1:8699"+$Path) -Method Get -Headers $headers -TimeoutSec 10
+    }catch{
+        return $null
+    }
+}
+
 function BlueGreen-Restart($Service,[bool]$WasRunning){
     if(-not $WasRunning){
         Write-Host ("[UPDATE] {0} был выключен — состояние сохраняю." -f $Service.Name) -ForegroundColor DarkGray
@@ -198,8 +208,11 @@ if(-not $failed){
 
 Write-Host "[ROLLBACK] Новая версия не прошла проверку. Возвращаю предыдущую." -ForegroundColor Yellow
 if(Health 8699){
-    foreach($s in ($services | Where-Object {$_.Key -ne "main"})){
-        [void](Supervisor-Post "/deployment/rollback" @{core=$s.Key})
+    $deployments=Supervisor-Get "/deployments"
+    if($deployments -and $deployments.deployments){
+        foreach($property in $deployments.deployments.PSObject.Properties){
+            [void](Supervisor-Post "/deployment/rollback" @{core=$property.Name})
+        }
     }
 }
 foreach($s in $services){if($running[$s.Key]){Stop-Port $s.Port}}
