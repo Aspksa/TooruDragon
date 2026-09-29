@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import mimetypes
 import os
+import time
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -29,6 +30,7 @@ GET_ALLOWLIST = {
         "/api/core/history",
         "/platform",
         "/api/tasks",
+        "/api/task/transitions",
         "/events",
         "/events/replay",
         "/events/consumers",
@@ -85,6 +87,20 @@ def _token() -> str:
     return os.getenv("TOORUDRAGON_API_TOKEN", "")
 
 
+def _upstream_json(path: str, timeout: float = 10.0) -> dict:
+    headers = {"Accept": "application/json"}
+    token = _token()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    request = urllib.request.Request(
+        UPSTREAMS["main"] + path,
+        method="GET",
+        headers=headers,
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "TooruDragonWeb/0.3.0"
 
@@ -124,6 +140,54 @@ class Handler(BaseHTTPRequestHandler):
     def _json(self, status: int, payload: dict) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self._send_bytes(status, body, "application/json; charset=utf-8")
+
+    def _stream_events(self) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "keep-alive")
+        self.send_header("X-Accel-Buffering", "no")
+        self.end_headers()
+
+        last_sequence = 0
+        try:
+            initial = _upstream_json("/events?limit=1", timeout=3.0)
+            items = initial.get("events", [])
+            if items:
+                last_sequence = int(items[0].get("sequence", 0))
+        except Exception:
+            pass
+
+        deadline = time.monotonic() + 55
+        try:
+            while time.monotonic() < deadline:
+                try:
+                    data = _upstream_json(
+                        f"/events?limit=100&after_sequence={last_sequence}",
+                        timeout=3.0,
+                    )
+                    events = list(reversed(data.get("events", [])))
+                    for event in events:
+                        sequence = int(event.get("sequence", 0))
+                        if sequence <= last_sequence:
+                            continue
+                        payload = json.dumps(event, ensure_ascii=False)
+                        self.wfile.write(
+                            f"id: {sequence}\nevent: durable_event\ndata: {payload}\n\n".encode("utf-8")
+                        )
+                        self.wfile.flush()
+                        last_sequence = sequence
+                    self.wfile.write(b": heartbeat\n\n")
+                    self.wfile.flush()
+                except Exception as exc:
+                    payload = json.dumps({"message": str(exc)}, ensure_ascii=False)
+                    self.wfile.write(
+                        f"event: stream_error\ndata: {payload}\n\n".encode("utf-8")
+                    )
+                    self.wfile.flush()
+                time.sleep(1.0)
+        except (BrokenPipeError, ConnectionResetError):
+            return
 
     def _serve_static(self) -> None:
         parsed = urlsplit(self.path)
@@ -231,6 +295,9 @@ class Handler(BaseHTTPRequestHandler):
             })
 
     def do_GET(self) -> None:
+        if self.path == "/stream/events":
+            self._stream_events()
+            return
         if self.path == "/health":
             self._json(200, {
                 "service": "web",
