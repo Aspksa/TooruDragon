@@ -61,6 +61,7 @@ class UpdateManager:
                 "scripts",
                 "web",
                 "tests",
+                "supervisor",
             ],
             cwd=self.root,
             text=True,
