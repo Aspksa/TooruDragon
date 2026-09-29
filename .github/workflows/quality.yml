@@ -11,8 +11,12 @@ permissions:
 
 jobs:
   platform-tests:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 12
 
     steps:
       - name: Checkout
@@ -28,3 +32,25 @@ jobs:
 
       - name: Platform tests
         run: python -m unittest discover -s tests -p "test_*.py"
+
+      - name: Parse PowerShell scripts
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $errors = @()
+          Get-ChildItem -Path . -Recurse -Filter *.ps1 | ForEach-Object {
+            $tokens = $null
+            $parseErrors = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile(
+              $_.FullName,
+              [ref]$tokens,
+              [ref]$parseErrors
+            )
+            if ($parseErrors) {
+              $errors += $parseErrors
+            }
+          }
+          if ($errors.Count -gt 0) {
+            $errors | Format-List
+            throw "PowerShell syntax validation failed."
+          }
