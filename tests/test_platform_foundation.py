@@ -5,7 +5,9 @@ import unittest
 from pathlib import Path
 
 from core.system.contracts import Envelope, validate_envelope
+from core.system.agent_runtime import AgentRuntime, ToolRouter
 from core.system.database import Database
+from core.system.event_fabric import EventFabric
 from core.system.policy import PolicyEngine
 from core.system.workflow import WorkflowEngine
 
@@ -122,6 +124,75 @@ class WorkflowTests(unittest.TestCase):
         )
         self.assertEqual(failed["state"], "failed")
         self.assertEqual(failed["attempts"], 2)
+
+
+class EventFabricTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.db = Database(Path(self.tmp.name) / "events.db")
+        self.db.initialize("test")
+        self.fabric = EventFabric(self.db, retention=1000)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_replay_ack_and_dead_letter(self):
+        first = self.fabric.publish("demo.created", "test", {"n": 1})
+        second = self.fabric.publish("demo.created", "test", {"n": 2})
+
+        replay = self.fabric.replay("consumer-a", topic="demo.created")
+        self.assertEqual([item["id"] for item in replay], [first["id"], second["id"]])
+
+        self.fabric.ack("consumer-a", first["sequence"])
+        replay2 = self.fabric.replay("consumer-a", topic="demo.created")
+        self.assertEqual([item["id"] for item in replay2], [second["id"]])
+
+        self.fabric.dead_letter(second["id"], "consumer-a", "boom")
+        self.assertEqual(self.fabric.stats()["dead_letters"], 1)
+
+
+class AgentRuntimeTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.db = Database(Path(self.tmp.name) / "agents.db")
+        self.db.initialize("test")
+        self.workflow = WorkflowEngine(self.db)
+        self.policy = PolicyEngine({
+            "_default": "deny",
+            "planner": ["workflow.create"],
+        })
+        self.runtime = AgentRuntime(
+            self.workflow,
+            self.policy,
+            ToolRouter(self.policy),
+        )
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_agent_plan_is_policy_gated_and_traceable(self):
+        plan = self.runtime.submit_plan(
+            agent_id="planner",
+            steps=[
+                {"kind": "work.prepare", "payload": {"x": 1}},
+                {"kind": "work.execute", "payload": {"x": 2}},
+            ],
+        )
+        self.assertEqual(len(plan["tasks"]), 2)
+        self.assertEqual(
+            plan["tasks"][1]["parent_id"],
+            plan["tasks"][0]["id"],
+        )
+        self.assertEqual(
+            plan["tasks"][0]["trace_id"],
+            plan["tasks"][1]["trace_id"],
+        )
+
+        with self.assertRaises(PermissionError):
+            self.runtime.submit_plan(
+                agent_id="unknown",
+                steps=[{"kind": "noop", "payload": {}}],
+            )
 
 
 if __name__ == "__main__":
