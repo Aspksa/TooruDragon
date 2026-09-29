@@ -79,8 +79,17 @@ function Test-Core([int]$port){
 }
 function Stop-Port([int]$port){
     try{
-        $c=Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
-        if($c){Stop-Process -Id $c.OwningProcess -Force -ErrorAction Stop;return $true}
+        if(Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue){
+            $conn=Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | Select-Object -First 1
+            if($conn){Stop-Process -Id $conn.OwningProcess -Force -ErrorAction Stop;return $true}
+        }else{
+            $line=netstat -ano -p tcp | Select-String (":{0}\\s+.*LISTENING\\s+(\\d+)$" -f $port) | Select-Object -First 1
+            if($line -and $line.Matches.Count -gt 0){
+                $pidValue=[int]$line.Matches[0].Groups[1].Value
+                Stop-Process -Id $pidValue -Force -ErrorAction Stop
+                return $true
+            }
+        }
     }catch{}
     return $false
 }
@@ -104,11 +113,12 @@ function Restart-System{
     Start-System
 }
 function Update-System{
-    if(Get-Command git -ErrorAction SilentlyContinue){
-        Start-Process -FilePath "cmd.exe" -ArgumentList @("/k","git pull --ff-only origin main") -WorkingDirectory $Root
-    }else{
-        Notify "Обновление" "Git не найден. Автообновление недоступно."
-    }
+    $py=Find-Python
+    if(-not $py){Notify "Обновление" "Python не найден. Сначала выполните запуск системы.";return}
+    if(-not(Get-Command git -ErrorAction SilentlyContinue)){Notify "Обновление" "Git не найден. Автообновление недоступно.";return}
+    $script=Join-Path $Root "scripts\update.py"
+    Start-Process -FilePath "cmd.exe" -ArgumentList @("/k","`"$py`" `"$script`"") -WorkingDirectory $Root
+    Notify "Безопасное обновление" "Создаётся backup и проверяется обновление. После успеха перезапустите систему."
 }
 
 function Find-Python{
