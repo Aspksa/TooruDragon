@@ -217,6 +217,15 @@ def set_safe_mode(enabled: bool, reason: str = "") -> None:
 
 
 def snapshot() -> dict:
+    with deployment_lock:
+        deployments = {
+            name: {
+                "candidate": data["candidate"].__dict__,
+                "previous": data["previous"],
+            }
+            for name, data in active_deployments.items()
+        }
+
     return {
         "service": "supervisor",
         "status": "ok",
@@ -229,13 +238,7 @@ def snapshot() -> dict:
             "port": gateway_port,
         },
         "cores": manager.snapshot(),
-        "deployments": {
-            name: {
-                "candidate": data["candidate"].__dict__,
-                "previous": data["previous"],
-            }
-            for name, data in active_deployments.items()
-        },
+        "deployments": deployments,
         "restart_budget": {
             "window_seconds": crash_loop_window_seconds,
             "max_restarts": max_restarts_in_window,
@@ -263,6 +266,29 @@ def restart_allowed(name: str) -> bool:
     return True
 
 
+def sync_active_routes() -> None:
+    with deployment_lock:
+        for core, data in list(active_deployments.items()):
+            candidate = data["candidate"]
+            previous = data["previous"]
+            probe = deployer.probe(candidate, timeout_seconds=2)
+            if probe.get("ok"):
+                try:
+                    deployer.promote(candidate)
+                    logger.info("Restored active candidate route for %s", core)
+                except Exception:
+                    logger.exception("Failed to restore active candidate route for %s", core)
+                continue
+
+            try:
+                deployer.rollback_route(core, previous)
+            except Exception:
+                logger.exception("Failed to restore previous route for %s", core)
+            active_deployments.pop(core, None)
+            delete_deployment(core)
+            logger.warning("Dropped unhealthy candidate deployment for %s", core)
+
+
 def recovery_loop() -> None:
     if startup_grace_seconds:
         time.sleep(startup_grace_seconds)
@@ -285,6 +311,8 @@ def recovery_loop() -> None:
                     if restart_allowed("gateway"):
                         result = start_gateway()
                         logger.warning("Supervisor gateway recovery: %s", result)
+                        if result.get("ok"):
+                            sync_active_routes()
                     failures["gateway"] = 0
 
         for name in cores:
