@@ -24,7 +24,7 @@ jobs:
           python-version: "3.11"
 
       - name: Compile
-        run: python -m compileall -q core scripts web tests supervisor
+        run: python -m compileall -q core scripts web tests supervisor gateway
 
       - name: Platform tests
         run: python -m unittest discover -s tests -p "test_*.py"
