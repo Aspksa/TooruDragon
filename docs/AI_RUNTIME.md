@@ -220,3 +220,39 @@ The Web UI supports:
 - RAG search;
 - Tool Router operations;
 - Planner → Workflow operations.
+
+
+## Stateless inference
+
+For one-shot model calls without conversation memory or RAG:
+
+```http
+POST /inference
+```
+
+Example:
+
+```json
+{
+  "prompt": "Summarize this text",
+  "provider": "local",
+  "model": null,
+  "temperature": 0.2,
+  "max_tokens": 800
+}
+```
+
+This route calls Model Router directly and does not write conversation history.
+
+## Runtime limits
+
+Configured defaults:
+
+- chat/inference message: 65,536 characters;
+- RAG document: 2,000,000 characters;
+- Web Control Center request body: 2,500,000 bytes;
+- model temperature: 0.0–2.0;
+- requested output token budget is bounded by Model Router.
+
+These are safety/resource budgets, not model-context guarantees. Individual
+providers may impose smaller limits.
