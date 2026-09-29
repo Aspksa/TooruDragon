@@ -1,4 +1,4 @@
-param()
+param([switch]$AutoStart)
 
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Windows.Forms
@@ -66,10 +66,8 @@ function B([string]$t,[int]$x,[int]$y,[int]$w,[int]$h,[Drawing.Color]$c){
     $o.ForeColor=$text
     $o.Font=F 10 ([Drawing.FontStyle]::Bold)
     $o.Cursor=[Windows.Forms.Cursors]::Hand
-    $normal=$panel2
-    $hover=[Drawing.Color]::FromArgb(45,35,72)
-    $o.Add_MouseEnter({$this.BackColor=$hover})
-    $o.Add_MouseLeave({$this.BackColor=$normal})
+    $o.Add_MouseEnter({$this.BackColor=[Drawing.Color]::FromArgb(45,35,72)})
+    $o.Add_MouseLeave({$this.BackColor=[Drawing.Color]::FromArgb(24,31,53)})
     $o
 }
 
@@ -87,7 +85,8 @@ function Stop-Port([int]$port){
     return $false
 }
 function Start-System{
-    Start-Process -FilePath "cmd.exe" -ArgumentList @("/c",(Join-Path $Root "StartTooruDragon.bat")) -WorkingDirectory $Root
+    $startBat=Join-Path $Root "StartTooruDragon.bat"
+    Start-Process -FilePath "cmd.exe" -ArgumentList @("/c","`"$startBat`"") -WorkingDirectory $Root
 }
 function Stop-System{
     foreach($c in ($cores|Sort-Object Port -Descending)){[void](Stop-Port $c.Port)}
@@ -233,7 +232,9 @@ $home=$pages["Главная"]
 $hero=P 18 18 1110 230 ([Drawing.Color]::FromArgb(25,17,46))
 $home.Controls.Add($hero)
 
-$artPath=Join-Path $Root "assets\launcher\tooru-maid.jpg"
+$artDir=Join-Path $Root "runtime\launcher"
+New-Item -ItemType Directory -Force -Path $artDir | Out-Null
+$artPath=Join-Path $artDir "tooru-maid.jpg"
 $artEncoded=Join-Path $Root "assets\launcher\tooru-maid-mini.jpg.b64"
 if((-not(Test-Path $artPath)) -and (Test-Path $artEncoded)){
     try{
@@ -467,5 +468,6 @@ $pages["Главная"].Visible=$true
 $nav["Главная"].BackColor=[Drawing.Color]::FromArgb(67,42,112)
 $splash.Close();$splash.Dispose()
 Notify "TooruDragon" "Лаунчер готов, господин. 🐉"
+if($AutoStart -and -not(Test-Core 8700)){Start-System}
 [void]$form.ShowDialog()
 $timer.Stop();$tray.Dispose()
