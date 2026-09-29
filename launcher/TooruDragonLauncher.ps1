@@ -6,6 +6,11 @@ Add-Type -AssemblyName System.Drawing
 
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 Set-Location $Root
+$iconPath=Join-Path $Root "assets\launcher\toorudragon.ico"
+if(-not(Test-Path $iconPath)){
+    try{& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root "scripts\create_icon.ps1") | Out-Null}catch{}
+}
+$appIcon=if(Test-Path $iconPath){New-Object Drawing.Icon($iconPath)}else{[Drawing.SystemIcons]::Application}
 
 $bg = [Drawing.Color]::FromArgb(9,12,23)
 $panel = [Drawing.Color]::FromArgb(17,23,41)
@@ -137,7 +142,7 @@ function Test-Watchdog{
 }
 
 $tray=New-Object Windows.Forms.NotifyIcon
-$tray.Icon=[Drawing.SystemIcons]::Application
+$tray.Icon=$appIcon
 $tray.Text="TooruDragon Launcher"
 $tray.Visible=$true
 $trayMenu=New-Object Windows.Forms.ContextMenuStrip
@@ -175,6 +180,7 @@ $form.MinimumSize=New-Object Drawing.Size(1200,760)
 $form.StartPosition="CenterScreen"
 $form.BackColor=$bg
 $form.ForeColor=$text
+$form.Icon=$appIcon
 
 $side=P 0 0 230 900 ([Drawing.Color]::FromArgb(8,10,20))
 $side.Dock=[Windows.Forms.DockStyle]::Left
