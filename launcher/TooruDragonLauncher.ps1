@@ -80,7 +80,9 @@ function Test-Core([int]$port){
 function Invoke-CoreAction([string]$Core,[string]$Action){
     $body=@{core=$Core;action=$Action}|ConvertTo-Json -Compress
     try{
-        $result=Invoke-RestMethod -Uri "http://127.0.0.1:8699/core/action" -Method Post -ContentType "application/json; charset=utf-8" -Body $body -TimeoutSec 20
+        $supervisorHeaders=@{}
+        if($env:TOORUDRAGON_API_TOKEN){$supervisorHeaders["Authorization"]="Bearer "+$env:TOORUDRAGON_API_TOKEN}
+        $result=Invoke-RestMethod -Uri "http://127.0.0.1:8699/core/action" -Method Post -ContentType "application/json; charset=utf-8" -Headers $supervisorHeaders -Body $body -TimeoutSec 20
         Notify "Supervisor" ("{0}: {1}" -f $Core,$Action)
         return $result
     }catch{
