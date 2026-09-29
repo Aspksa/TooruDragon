@@ -17,5 +17,14 @@
     "remote": "origin",
     "branch": "main",
     "strategy": "ff-only"
+  },
+  "watchdog": {
+    "enabled": true,
+    "interval_seconds": 10,
+    "failure_threshold": 3,
+    "auto_restart": true
+  },
+  "event_bus": {
+    "max_events": 500
   }
 }
