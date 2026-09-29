@@ -60,6 +60,7 @@ class UpdateManager:
                 "core",
                 "scripts",
                 "web",
+                "tests",
             ],
             cwd=self.root,
             text=True,
@@ -68,6 +69,29 @@ class UpdateManager:
         )
         if compile_result.returncode != 0:
             logger.error("Python validation failed: %s", compile_result.stderr.strip())
+            return False
+
+        test_result = subprocess.run(
+            [
+                python,
+                "-m",
+                "unittest",
+                "discover",
+                "-s",
+                "tests",
+                "-p",
+                "test_*.py",
+            ],
+            cwd=self.root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if test_result.returncode != 0:
+            logger.error(
+                "Platform tests failed: %s",
+                (test_result.stderr or test_result.stdout).strip(),
+            )
             return False
 
         return True
