@@ -57,3 +57,49 @@ ON core_actions(created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_core_actions_core_name
 ON core_actions(core_name);
+
+
+CREATE TABLE IF NOT EXISTS tasks (
+    id TEXT PRIMARY KEY,
+    workflow_id TEXT NOT NULL,
+    parent_id TEXT,
+    kind TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    state TEXT NOT NULL,
+    priority INTEGER NOT NULL DEFAULT 100,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    max_attempts INTEGER NOT NULL DEFAULT 3,
+    available_at TEXT NOT NULL,
+    lease_owner TEXT,
+    lease_until TEXT,
+    idempotency_key TEXT,
+    trace_id TEXT NOT NULL,
+    required_capability TEXT,
+    result_json TEXT,
+    error TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_idempotency_key
+ON tasks(idempotency_key)
+WHERE idempotency_key IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_tasks_claim
+ON tasks(state, available_at, priority, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_tasks_workflow
+ON tasks(workflow_id, created_at);
+
+CREATE TABLE IF NOT EXISTS task_transitions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id TEXT NOT NULL,
+    from_state TEXT NOT NULL,
+    to_state TEXT NOT NULL,
+    message TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(task_id) REFERENCES tasks(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_transitions_task
+ON task_transitions(task_id, id);
