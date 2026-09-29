@@ -95,21 +95,17 @@ class ChatRuntime:
             max_tokens=max_tokens,
         )
 
-        user_message = self.memory.add_message(
+        exchange = self.memory.add_exchange(
             conversation_id,
-            "user",
             message,
-            trace_id=trace_id,
-            metadata={"retrieved_memory_ids": [item["id"] for item in memories]},
-        )
-        assistant_message = self.memory.add_message(
-            conversation_id,
-            "assistant",
             result["content"],
             provider=result.get("provider"),
             model=result.get("model"),
             trace_id=trace_id,
-            metadata={
+            user_metadata={
+                "retrieved_memory_ids": [item["id"] for item in memories],
+            },
+            assistant_metadata={
                 "finish_reason": result.get("finish_reason"),
                 "usage": result.get("usage"),
                 "raw_id": result.get("raw_id"),
@@ -125,10 +121,7 @@ class ChatRuntime:
             "finish_reason": result.get("finish_reason"),
             "usage": result.get("usage"),
             "retrieved_memories": memories,
-            "messages": {
-                "user": user_message,
-                "assistant": assistant_message,
-            },
+            "messages": exchange,
         }
 
     def remember(
