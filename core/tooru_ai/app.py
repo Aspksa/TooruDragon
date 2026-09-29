@@ -8,22 +8,25 @@ sys.path.insert(0, str(ROOT))
 
 from core.system import CoreRuntime, Route
 
+CAPABILITIES = [
+    "dialog",
+    "memory",
+    "models",
+    "tools",
+    "ai_orchestration",
+]
+
 runtime = CoreRuntime(
     "tooru_ai",
     "Основное AI-ядро Тору: диалог, память, модели и инструменты",
+    capabilities=CAPABILITIES,
 )
 
 
 def capabilities(_request):
     return 200, {
         "service": "tooru_ai",
-        "capabilities": [
-            "dialog",
-            "memory",
-            "models",
-            "tools",
-            "ai_orchestration",
-        ],
+        "capabilities": CAPABILITIES,
     }
 
 
