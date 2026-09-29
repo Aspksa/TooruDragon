@@ -18,9 +18,11 @@
       <button class="active" data-page="dashboard">⌂ <span>Обзор</span></button>
       <button data-page="cores">◈ <span>Ядра</span></button>
       <button data-page="tasks">✓ <span>Задачи</span></button>
+      <button data-page="workflow">◇ <span>Workflow</span></button>
       <button data-page="events">⌁ <span>События</span></button>
-      <button data-page="agent">✦ <span>Агент</span></button>
+      <button data-page="agent">✦ <span>Agent Console</span></button>
       <button data-page="control">⚙ <span>Control Plane</span></button>
+      <button data-page="audit">☷ <span>Audit</span></button>
     </nav>
     <div class="side-footer">
       <div class="connection"><span id="conn-dot" class="dot"></span><span id="conn-text">Подключение...</span><br>Gateway :8698 · Supervisor :8699</div>
@@ -57,6 +59,13 @@
         <div class="card metric"><div class="metric-label">RAM Main</div><div class="metric-value" id="metric-memory">—</div><div class="metric-note">resident memory</div></div>
         <div class="card metric"><div class="metric-label">Durable events</div><div class="metric-value" id="metric-events">—</div><div class="metric-note">Event Fabric</div></div>
         <div class="card metric"><div class="metric-label">Supervisor uptime</div><div class="metric-value" id="metric-uptime">—</div><div class="metric-note"><span id="deployment-count">0</span> active deployment</div></div>
+      </div>
+      <div class="section">
+        <div class="section-head"><h3>Live telemetry</h3><span class="status-pill online" id="telemetry-badge">5s samples</span></div>
+        <div class="chart-grid">
+          <div class="card panel"><div class="chart-title">Main RAM</div><canvas id="ram-chart" height="150"></canvas></div>
+          <div class="card panel"><div class="chart-title">Main CPU</div><canvas id="cpu-chart" height="150"></canvas></div>
+        </div>
       </div>
       <div class="section"><div class="section-head"><h3>Ядра</h3></div><div class="core-grid" id="core-grid"></div></div>
     </section>
@@ -97,9 +106,33 @@
       </div>
     </section>
 
+
+    <section class="page" data-page="workflow">
+      <div class="section-head">
+        <h3>Workflow Graph</h3>
+        <div class="actions">
+          <select id="workflow-select" class="compact-select"></select>
+          <button class="btn" id="workflow-refresh">↻ Обновить</button>
+        </div>
+      </div>
+      <div class="card panel workflow-canvas-wrap">
+        <svg id="workflow-graph" class="workflow-graph" viewBox="0 0 1000 420" preserveAspectRatio="xMidYMid meet"></svg>
+      </div>
+      <div class="section two-col">
+        <div class="card panel">
+          <div class="section-head"><h3>Задачи workflow</h3></div>
+          <div id="workflow-task-list" class="stack-list"></div>
+        </div>
+        <div class="card panel">
+          <div class="section-head"><h3>Переходы выбранной задачи</h3></div>
+          <pre class="json" id="workflow-transitions">Выберите задачу на графе.</pre>
+        </div>
+      </div>
+    </section>
+
     <section class="page" data-page="events">
       <div class="card panel">
-        <div class="section-head"><h3>Durable Event Fabric</h3><button class="btn" id="events-refresh">↻</button></div>
+        <div class="section-head"><h3>Durable Event Fabric</h3><div class="actions"><span class="status-pill" id="live-stream-badge">LIVE CONNECTING</span><button class="btn" id="events-refresh">↻</button></div></div>
         <ul class="log" id="event-log"></ul>
       </div>
     </section>
@@ -122,6 +155,10 @@
 ]</textarea></div>
           <button class="btn primary" style="margin-top:12px" id="agent-plan-submit">Создать план</button>
           <div class="section"><pre class="json" id="agent-result">Результат появится здесь.</pre></div>
+          <div class="section">
+            <div class="section-head"><h3>Console transcript</h3><button class="btn" id="agent-console-clear">Очистить</button></div>
+            <div class="console" id="agent-console"></div>
+          </div>
         </div>
       </div>
     </section>
@@ -135,6 +172,31 @@
       <div class="section card panel">
         <div class="section-head"><h3>Control Plane snapshot</h3><button class="btn" id="control-refresh">↻</button></div>
         <pre class="json" id="control-json">Загрузка...</pre>
+      </div>
+    </section>
+
+    <section class="page" data-page="audit">
+      <div class="grid audit-metrics">
+        <div class="card metric"><div class="metric-label">Core actions</div><div class="metric-value" id="audit-core-count">—</div><div class="metric-note">последние 100</div></div>
+        <div class="card metric"><div class="metric-label">Durable events</div><div class="metric-value" id="audit-event-count">—</div><div class="metric-note">последние 100</div></div>
+        <div class="card metric"><div class="metric-label">DLQ</div><div class="metric-value" id="audit-dlq-count">—</div><div class="metric-note">Event Fabric</div></div>
+        <div class="card metric"><div class="metric-label">Consumer gaps</div><div class="metric-value" id="audit-gap-count">—</div><div class="metric-note">retention gap</div></div>
+      </div>
+      <div class="section two-col">
+        <div class="card panel">
+          <div class="section-head"><h3>Core lifecycle audit</h3><button class="btn" id="audit-refresh">↻</button></div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Time</th><th>Core</th><th>Action</th><th>OK</th><th>Message</th></tr></thead>
+            <tbody id="audit-core-body"></tbody>
+          </table></div>
+        </div>
+        <div class="card panel">
+          <div class="section-head"><h3>Consumer health</h3></div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Consumer</th><th>Sequence</th><th>Lag</th><th>Gap</th></tr></thead>
+            <tbody id="audit-consumer-body"></tbody>
+          </table></div>
+        </div>
       </div>
     </section>
   </main>
