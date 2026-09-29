@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
@@ -12,11 +13,22 @@ sys.path.insert(0, str(ROOT))
 from core.system import CoreRuntime, Route
 from core.system.compatibility import CompatibilityManager
 from core.system.event_bus import EventBus
+from core.system.service_registry import ServiceRegistry
 from core.system.watchdog import Watchdog
+
+MAIN_CAPABILITIES = [
+    "orchestration",
+    "watchdog",
+    "service_registry",
+    "event_bus",
+    "compatibility",
+    "updates",
+]
 
 runtime = CoreRuntime(
     "main",
     "Главное управляющее ядро TooruDragon",
+    capabilities=MAIN_CAPABILITIES,
 )
 
 CORES = {
@@ -30,6 +42,22 @@ event_bus = EventBus(
 )
 
 compatibility_manager = CompatibilityManager(runtime.cores)
+
+registry_config = runtime.config.get("service_registry", {})
+service_registry = ServiceRegistry(
+    stale_after_seconds=int(registry_config.get("stale_after_seconds", 35))
+)
+service_registry.register({
+    "name": runtime.name,
+    "display_name": runtime.display_name,
+    "version": runtime.version,
+    "host": runtime.host,
+    "port": runtime.port,
+    "role": runtime.role,
+    "capabilities": runtime.capabilities,
+    "pid": os.getpid(),
+    "uptime_seconds": 0,
+})
 
 watchdog_config = runtime.config.get("watchdog", {})
 watchdog = Watchdog(
@@ -64,6 +92,7 @@ def cores(_request):
         "version": runtime.version,
         "status": "ok" if all_ok else "degraded",
         "cores": states,
+        "registry": service_registry.snapshot(),
     }
 
 
@@ -79,6 +108,8 @@ def routes(_request):
             "/events/publish": "Публикация события",
             "/watchdog": "Состояние Watchdog",
             "/compatibility": "Проверка совместимости версий",
+            "/registry": "Живой реестр сервисов",
+            "/registry/register": "Регистрация и heartbeat ядра",
         },
     }
 
@@ -128,6 +159,29 @@ def compatibility(_request):
     }
 
 
+def registry_status(_request):
+    return 200, {
+        "service": "main",
+        "registry": service_registry.snapshot(),
+    }
+
+
+def registry_register(request):
+    payload = request.json if isinstance(request.json, dict) else {}
+    try:
+        service = service_registry.register(payload)
+    except (ValueError, TypeError) as exc:
+        return 400, {
+            "error": "invalid_registry_payload",
+            "message": str(exc),
+        }
+
+    return 201, {
+        "service": "main",
+        "registered": service,
+    }
+
+
 if __name__ == "__main__":
     if bool(watchdog_config.get("enabled", True)):
         watchdog.start()
@@ -145,4 +199,10 @@ if __name__ == "__main__":
         "/events/publish": Route(publish_event, method="POST", protected=True),
         "/watchdog": Route(watchdog_status, protected=False),
         "/compatibility": Route(compatibility, protected=False),
+        "/registry": Route(registry_status, protected=False),
+        "/registry/register": Route(
+            registry_register,
+            method="POST",
+            protected=False,
+        ),
     })
