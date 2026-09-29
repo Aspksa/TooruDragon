@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import signal
 import subprocess
 import sys
 import threading
@@ -49,7 +51,7 @@ def start_main() -> dict:
         "stdout": subprocess.DEVNULL,
         "stderr": subprocess.DEVNULL,
     }
-    if __import__("os").name == "nt":
+    if os.name == "nt":
         kwargs["creationflags"] = (
             getattr(subprocess, "CREATE_NO_WINDOW", 0)
             | getattr(subprocess, "DETACHED_PROCESS", 0)
@@ -64,6 +66,68 @@ def start_main() -> dict:
             return {"ok": True, "pid": process.pid}
     return {"ok": False, "pid": process.pid, "message": "main health-check failed"}
 
+
+
+def stop_main() -> dict:
+    manager.set_desired_state("main", "stopped")
+    pid = manager.pid("main")
+    if pid is None:
+        return {"ok": True, "already_stopped": True}
+
+    try:
+        if os.name == "nt":
+            result = subprocess.run(
+                ["taskkill", "/PID", str(pid), "/T", "/F"],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if result.returncode != 0:
+                return {
+                    "ok": False,
+                    "pid": pid,
+                    "message": result.stderr.strip() or result.stdout.strip(),
+                }
+        else:
+            os.kill(pid, signal.SIGTERM)
+
+        for _ in range(24):
+            time.sleep(0.25)
+            if not manager.status("main").get("online"):
+                return {"ok": True, "pid": pid}
+        return {"ok": False, "pid": pid, "message": "main still responds after stop"}
+    except Exception as exc:
+        return {"ok": False, "pid": pid, "message": str(exc)}
+
+
+def restart_main() -> dict:
+    manager.set_desired_state("main", "running")
+    pid = manager.pid("main")
+    if pid is not None:
+        stopped = stop_main()
+        if not stopped.get("ok"):
+            return stopped
+    manager.set_desired_state("main", "running")
+    return start_main()
+
+
+def lifecycle_action(name: str, action: str) -> dict:
+    if name not in cores:
+        return {"ok": False, "error": "unknown_core", "core": name}
+
+    if action not in {"start", "stop", "restart"}:
+        return {"ok": False, "error": "unsupported_action", "action": action}
+
+    if name == "main":
+        if action == "start":
+            manager.set_desired_state("main", "running")
+            return start_main()
+        if action == "stop":
+            return stop_main()
+        return restart_main()
+
+    handler = getattr(manager, action)
+    return handler(name)
 
 
 def safe_mode() -> bool:
@@ -193,6 +257,18 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/safe-mode/disable":
             set_safe_mode(False)
             self.send_json(200, {"safe_mode": False})
+            return
+        if self.path == "/core/action":
+            try:
+                length = int(self.headers.get("Content-Length", "0") or 0)
+                raw = self.rfile.read(length) if length else b"{}"
+                payload = json.loads(raw.decode("utf-8"))
+                name = str(payload.get("core", "")).strip()
+                action = str(payload.get("action", "")).strip().lower()
+                result = lifecycle_action(name, action)
+                self.send_json(200 if result.get("ok") else 409, result)
+            except json.JSONDecodeError:
+                self.send_json(400, {"error": "invalid_json"})
             return
         self.send_json(404, {"error": "not_found"})
 
