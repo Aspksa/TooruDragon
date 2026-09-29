@@ -23,16 +23,10 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo [1/3] Checking updates...
-git fetch origin main
+echo [1/3] System Layer: checking updates...
+python "scripts\update.py"
 if errorlevel 1 (
-    echo [WARN] Update check failed. Starting current local version.
-) else (
-    git pull --ff-only origin main
-    if errorlevel 1 (
-        echo [WARN] Automatic update was not applied.
-        echo [WARN] Local changes or branch divergence may require manual resolution.
-    )
+    echo [WARN] Automatic update was not applied. Starting current local version.
 )
 
 echo.
