@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT))
 
 from core.system import CoreRuntime, Route
 from core.system.compatibility import CompatibilityManager
+from core.system.core_manager import CoreManager
 from core.system.event_bus import EventBus
 from core.system.service_registry import ServiceRegistry
 from core.system.watchdog import Watchdog
@@ -44,6 +45,11 @@ event_bus = EventBus(
 )
 
 compatibility_manager = CompatibilityManager(runtime.cores)
+core_manager = CoreManager(
+    host=runtime.config_host,
+    cores=runtime.cores,
+    root=ROOT,
+)
 
 registry_config = runtime.config.get("service_registry", {})
 service_registry = ServiceRegistry(
@@ -84,6 +90,7 @@ watchdog = Watchdog(
     interval_seconds=int(watchdog_config.get("interval_seconds", 10)),
     failure_threshold=int(watchdog_config.get("failure_threshold", 3)),
     auto_restart=bool(watchdog_config.get("auto_restart", True)),
+    restart_callback=core_manager.restart,
 )
 
 
@@ -126,6 +133,9 @@ def routes(_request):
             "/compatibility": "Проверка совместимости версий",
             "/registry": "Живой реестр сервисов",
             "/registry/register": "Регистрация и heartbeat ядра",
+            "/api/cores": "Core Manager: статусы всех ядер",
+            "/api/core/action": "Core Manager: start/stop/restart ядра",
+            "/api/core/history": "История управляющих действий",
         },
     }
 
@@ -205,6 +215,84 @@ def registry_register(request):
     }
 
 
+def managed_cores(_request):
+    return 200, {
+        "service": "main",
+        "manager": {
+            "cores": core_manager.snapshot(),
+        },
+    }
+
+
+def core_action(request):
+    payload = request.json if isinstance(request.json, dict) else {}
+    name = str(payload.get("core", "")).strip()
+    action = str(payload.get("action", "")).strip().lower()
+
+    if name not in runtime.cores:
+        return 404, {
+            "error": "unknown_core",
+            "core": name,
+        }
+
+    actions = {
+        "start": core_manager.start,
+        "stop": core_manager.stop,
+        "restart": core_manager.restart,
+    }
+    handler = actions.get(action)
+    if handler is None:
+        return 400, {
+            "error": "unsupported_action",
+            "action": action,
+            "allowed": sorted(actions),
+        }
+
+    result = handler(name)
+    event_bus.publish(
+        "core.manager.action",
+        "main",
+        {
+            "core": name,
+            "action": action,
+            "ok": bool(result.get("ok")),
+            "message": result.get("message"),
+        },
+    )
+    return (200 if result.get("ok") else 409), result
+
+
+def core_history(request):
+    raw_limit = request.query.get("limit", ["100"])[0]
+    try:
+        limit = int(raw_limit)
+    except ValueError:
+        limit = 100
+
+    return 200, {
+        "service": "main",
+        "history": core_manager.history(limit=limit),
+    }
+
+
+def core_alias(name: str, action: str):
+    def handler(_request):
+        result = getattr(core_manager, action)(name)
+        event_bus.publish(
+            "core.manager.action",
+            "main",
+            {
+                "core": name,
+                "action": action,
+                "ok": bool(result.get("ok")),
+                "message": result.get("message"),
+            },
+        )
+        return (200 if result.get("ok") else 409), result
+
+    return handler
+
+
 if __name__ == "__main__":
     threading.Thread(
         target=main_registry_heartbeat,
@@ -221,7 +309,7 @@ if __name__ == "__main__":
         {"version": runtime.version},
     )
 
-    runtime.run({
+    managed_routes = {
         "/cores": Route(cores, protected=False),
         "/routes": Route(routes, protected=False),
         "/events": Route(events, protected=False),
@@ -234,4 +322,19 @@ if __name__ == "__main__":
             method="POST",
             protected=False,
         ),
-    })
+        "/api/cores": Route(managed_cores, protected=False),
+        "/api/core/action": Route(core_action, method="POST", protected=True),
+        "/api/core/history": Route(core_history, protected=True),
+    }
+
+    for core_name in runtime.cores:
+        if core_name == "main":
+            continue
+        for action_name in ("start", "stop", "restart"):
+            managed_routes[f"/api/core/{core_name}/{action_name}"] = Route(
+                core_alias(core_name, action_name),
+                method="POST",
+                protected=True,
+            )
+
+    runtime.run(managed_routes)
