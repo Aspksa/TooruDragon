@@ -1,0 +1,11 @@
+{
+  "version": "0.1.0-alpha",
+  "host": "127.0.0.1",
+  "cores": {
+    "main": 8700,
+    "tooru_ai": 8701,
+    "workshop": 8702,
+    "home": 8703,
+    "work": 8704
+  }
+}
