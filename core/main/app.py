@@ -17,8 +17,8 @@ runtime = CoreRuntime(
 )
 
 CORES = {
-    name: f"http://{runtime.config_host}:{port}/health"
-    for name, port in runtime.cores.items()
+    name: f"http://{runtime.config_host}:{entry['port'] if isinstance(entry, dict) else entry}/health"
+    for name, entry in runtime.cores.items()
     if name != "main"
 }
 
@@ -41,6 +41,7 @@ def cores(_request):
     all_ok = all(state.get("ok") for state in states.values())
     return (200 if all_ok else 503), {
         "service": "main",
+        "version": runtime.version,
         "status": "ok" if all_ok else "degraded",
         "cores": states,
     }
@@ -49,9 +50,10 @@ def cores(_request):
 def routes(_request):
     return 200, {
         "service": "main",
+        "version": runtime.version,
         "routes": {
             "/health": "Состояние главного ядра",
-            "/cores": "Состояние всех специализированных ядер",
+            "/cores": "Состояние и версии всех специализированных ядер",
             "/system": "Системная информация",
         },
     }
