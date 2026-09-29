@@ -13,6 +13,7 @@ const state = {
   liveSource: null,
   selectedWorkflow: null,
   latencyHistory: [],
+  aiConversationId: null,
 };
 
 const coreNames = {
@@ -491,6 +492,162 @@ async function deploymentAction(core, action) {
   } catch(e){toast(e.message,true)}
 }
 
+function renderAIConversation(messages) {
+  const root = $("#ai-chat-thread");
+  root.innerHTML = "";
+  if (!messages.length) {
+    const empty = document.createElement("div");
+    empty.className = "chat-message system";
+    empty.textContent = "Новый диалог. Настройте provider в config/system.json и отправьте сообщение.";
+    root.appendChild(empty);
+    return;
+  }
+  for (const item of messages) {
+    if (!["user","assistant","system"].includes(item.role)) continue;
+    const box = document.createElement("div");
+    box.className = "chat-message " + item.role;
+    const body = document.createElement("div");
+    body.textContent = item.content;
+    box.appendChild(body);
+    const meta = document.createElement("div");
+    meta.className = "chat-meta";
+    meta.textContent = [
+      item.provider,
+      item.model,
+      item.trace_id ? "trace " + item.trace_id.slice(0,8) : null,
+    ].filter(Boolean).join(" · ");
+    if (meta.textContent) box.appendChild(meta);
+    root.appendChild(box);
+  }
+  root.scrollTop = root.scrollHeight;
+}
+
+async function loadAIRuntime() {
+  try {
+    const [runtimeData, conversationData] = await Promise.all([
+      api("/api/tooru_ai/runtime"),
+      api("/api/tooru_ai/conversations?limit=50"),
+    ]);
+    const models = runtimeData.runtime?.models || {};
+    const providers = models.providers || {};
+    const providerSelect = $("#ai-provider");
+    const names = Object.keys(providers);
+    providerSelect.innerHTML = names.map(name => {
+      const item = providers[name];
+      const suffix = item.enabled && item.secret_available ? "ready" : "disabled";
+      return `<option value="${escapeHtml(name)}" ${name===models.default_provider?"selected":""}>${escapeHtml(name)} · ${suffix}</option>`;
+    }).join("") || '<option value="">provider not configured</option>';
+
+    const ready = Object.entries(providers)
+      .filter(([,item])=>item.enabled && item.secret_available)
+      .map(([name])=>name);
+    $("#ai-runtime-status").textContent = ready.length
+      ? `Model Router ready: ${ready.join(", ")} · retrieval=${runtimeData.runtime?.memory?.retrieval || "—"}`
+      : "Model Router настроен, но активного provider пока нет. Включите local/openai provider в config/system.json.";
+
+    const conversations = conversationData.conversations || [];
+    const select = $("#ai-conversation");
+    select.innerHTML = '<option value="">Новый диалог</option>' + conversations.map(item =>
+      `<option value="${escapeHtml(item.id)}" ${item.id===state.aiConversationId?"selected":""}>${escapeHtml((item.title || item.id).slice(0,30))}</option>`
+    ).join("");
+
+    if (state.aiConversationId) {
+      await loadAIConversation(state.aiConversationId);
+    } else {
+      renderAIConversation([]);
+    }
+  } catch (e) {
+    $("#ai-runtime-status").textContent = "Tooru/AI runtime недоступен: " + e.message;
+    renderAIConversation([]);
+  }
+}
+
+async function loadAIConversation(conversationId) {
+  state.aiConversationId = conversationId || null;
+  if (!conversationId) {
+    renderAIConversation([]);
+    return;
+  }
+  try {
+    const data = await api(`/api/tooru_ai/conversation?conversation_id=${encodeURIComponent(conversationId)}`);
+    renderAIConversation(data.messages || []);
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+async function sendAIChat() {
+  const input = $("#ai-chat-input");
+  const message = input.value.trim();
+  if (!message) return;
+
+  const body = {
+    message,
+    conversation_id: state.aiConversationId,
+    provider: $("#ai-provider").value || null,
+    model: $("#ai-model").value.trim() || null,
+  };
+
+  $("#ai-chat-send").disabled = true;
+  appendConsole("CHAT", "user → " + message);
+  try {
+    const data = await api("/api/tooru_ai/chat", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    const chat = data.chat;
+    state.aiConversationId = chat.conversation_id;
+    input.value = "";
+    appendConsole(
+      "CHAT",
+      `${chat.provider}/${chat.model} → ${chat.content}`
+    );
+    await loadAIRuntime();
+    $("#ai-conversation").value = state.aiConversationId;
+  } catch (e) {
+    appendConsole("ERROR", "chat: " + e.message, true);
+    const details = e.data?.models;
+    if (details) {
+      $("#ai-runtime-status").textContent =
+        "Provider недоступен: " + e.message + " · " + JSON.stringify(details);
+    }
+    toast(e.message, true);
+  } finally {
+    $("#ai-chat-send").disabled = false;
+  }
+}
+
+async function saveAIMemory() {
+  const input = $("#ai-memory-input");
+  const content = input.value.trim();
+  if (!content) return;
+  try {
+    const data = await api("/api/tooru_ai/memory/remember", {
+      method: "POST",
+      body: JSON.stringify({content, source:"web"}),
+    });
+    input.value = "";
+    $("#ai-memory-results").textContent = JSON.stringify(data.memory, null, 2);
+    appendConsole("MEMORY", "saved " + data.memory.id.slice(0,8));
+    toast("Память сохранена");
+  } catch (e) {
+    appendConsole("ERROR", "memory: " + e.message, true);
+    toast(e.message, true);
+  }
+}
+
+async function searchAIMemory() {
+  const query = $("#ai-memory-input").value.trim() || $("#ai-chat-input").value.trim();
+  if (!query) return;
+  try {
+    const data = await api(`/api/tooru_ai/memory/search?q=${encodeURIComponent(query)}&limit=10`);
+    $("#ai-memory-results").textContent = JSON.stringify(data.memories || [], null, 2);
+  } catch (e) {
+    $("#ai-memory-results").textContent = e.message;
+    toast(e.message, true);
+  }
+}
+
 async function loadAgent() {
   const id = $("#agent-id").value.trim() || "tooru_ai";
   try {
@@ -554,7 +711,7 @@ function showPage(name) {
   if(name==="tasks") loadTasks();
   if(name==="workflow") loadWorkflow();
   if(name==="events") loadEvents();
-  if(name==="agent") loadAgent();
+  if(name==="agent") { loadAgent(); loadAIRuntime(); }
   if(name==="control") loadControlPlane();
   if(name==="audit") loadAudit();
   if(innerWidth<760) $("#sidebar").classList.remove("open");
@@ -592,6 +749,16 @@ $("#events-refresh").addEventListener("click",loadEvents);
 $("#agent-id").addEventListener("input",loadAgent);
 $("#agent-tool-invoke").addEventListener("click",invokeAgentTool);
 $("#agent-plan-submit").addEventListener("click",submitPlan);
+$("#ai-chat-send").addEventListener("click",sendAIChat);
+$("#ai-chat-input").addEventListener("keydown",event=>{
+  if((event.ctrlKey || event.metaKey) && event.key==="Enter"){
+    event.preventDefault();
+    sendAIChat();
+  }
+});
+$("#ai-conversation").addEventListener("change",event=>loadAIConversation(event.target.value));
+$("#ai-memory-save").addEventListener("click",saveAIMemory);
+$("#ai-memory-search").addEventListener("click",searchAIMemory);
 $("#control-refresh").addEventListener("click",loadControlPlane);
 $("#workflow-refresh").addEventListener("click",loadWorkflow);
 $("#workflow-select").addEventListener("change",event=>{
@@ -621,7 +788,7 @@ window.loadTasks=loadTasks;
 window.loadEvents=loadEvents;
 window.loadControlPlane=loadControlPlane;
 
-appendConsole("SYSTEM","Agent Console готова. Доступны реальные Tool Router и Planner операции.");
+appendConsole("SYSTEM","Agent Console готова: Chat Runtime, Model Router, retrieval memory, Tool Router и Planner.");
 loadDashboard();
 startLiveEvents();
 setInterval(loadDashboard, 5000);
