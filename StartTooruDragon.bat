@@ -16,6 +16,13 @@ if errorlevel 1 (
     exit /b 1
 )
 
+where python >nul 2>nul
+if errorlevel 1 (
+    echo [ERROR] Python is not installed or not available in PATH.
+    pause
+    exit /b 1
+)
+
 echo [1/3] Checking updates...
 git fetch origin main
 if errorlevel 1 (
@@ -34,9 +41,14 @@ if exist "scripts\start_all.bat" (
     call "scripts\start_all.bat"
 ) else (
     echo [ERROR] scripts\start_all.bat not found.
+    pause
+    exit /b 1
 )
 
 echo.
 echo [3/3] TooruDragon bootstrap finished.
+echo Main Core: http://127.0.0.1:8700
+echo Core status: http://127.0.0.1:8700/cores
+echo.
 pause
 endlocal
