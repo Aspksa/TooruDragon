@@ -15,6 +15,8 @@ echo.
 echo [БАЗА] Инициализация общей базы данных...
 "%PYTHON_EXE%" "scripts\init_db.py"
 if errorlevel 1 exit /b 2
+"%PYTHON_EXE%" "scripts\desired_state.py" running --all
+if errorlevel 1 exit /b 21
 echo [SUPERVISOR] Проверка внешнего Control Plane...
 "%PYTHON_EXE%" -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8699/health', timeout=0.5).read()" >nul 2>nul
 if errorlevel 1 start "TooruDragon - Supervisor" "%PYTHON_EXE%" "supervisor\app.py"
