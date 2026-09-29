@@ -86,6 +86,27 @@ class CoreRuntime:
             "capabilities": self.capabilities,
         }
 
+    def liveness(self, _request: Request):
+        return 200, {
+            "service": self.name,
+            "status": "alive",
+        }
+
+    def readiness(self, _request: Request):
+        try:
+            self.db.query("SELECT 1 AS ok")
+            return 200, {
+                "service": self.name,
+                "status": "ready",
+            }
+        except Exception as exc:
+            self.logger.exception("Readiness check failed")
+            return 503, {
+                "service": self.name,
+                "status": "not_ready",
+                "error": type(exc).__name__,
+            }
+
     def system_info(self, _request: Request):
         return 200, {
             "service": self.name,
@@ -103,6 +124,8 @@ class CoreRuntime:
 
         effective_routes = {
             "/health": Route(self.health, protected=False),
+            "/live": Route(self.liveness, protected=False),
+            "/ready": Route(self.readiness, protected=False),
             "/system": Route(self.system_info, protected=True),
         }
         if routes:
