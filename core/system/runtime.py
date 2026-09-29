@@ -9,6 +9,7 @@ from .config import (
     system_config,
 )
 from .database import Database
+from .event_client import EventBusClient
 from .logging import get_logger
 from .server import Request, Route, run_server
 
@@ -33,6 +34,18 @@ class CoreRuntime:
         self.auth = AuthService(
             required=bool(auth_config.get("required", False)),
             token=str(auth_config.get("token", "")),
+        )
+
+        main_entry = self.cores.get("main", {})
+        main_port = int(
+            main_entry.get("port", 8700)
+            if isinstance(main_entry, dict)
+            else main_entry
+        )
+        self.events = EventBusClient(
+            base_url=f"http://{self.config_host}:{main_port}",
+            token=str(auth_config.get("token", "")),
+            logger=self.logger,
         )
 
     def health(self, _request: Request):
