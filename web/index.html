@@ -2,109 +2,147 @@
 <html lang="ru">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TooruDragon v0.3.0</title>
-  <style>
-    :root {
-      color-scheme: dark;
-      font-family: Inter, "Segoe UI", system-ui, sans-serif;
-      --bg:#0b0f14;
-      --panel:#121923;
-      --panel2:#17202b;
-      --line:#273244;
-      --text:#f4f7fb;
-      --muted:#95a2b5;
-      --good:#71e6a2;
-      --bad:#ff7f87;
-      --accent:#67d6ff;
-    }
-    *{box-sizing:border-box}
-    body{margin:0;background:
-      radial-gradient(circle at top right,rgba(62,177,255,.12),transparent 34%),
-      radial-gradient(circle at top left,rgba(120,90,255,.10),transparent 30%),
-      var(--bg);color:var(--text);min-height:100vh}
-    main{max-width:1100px;margin:0 auto;padding:34px 20px 60px}
-    .hero{display:flex;gap:18px;align-items:center;justify-content:space-between;flex-wrap:wrap}
-    .brand{display:flex;align-items:center;gap:14px}
-    .dragon{font-size:46px;filter:drop-shadow(0 0 18px rgba(103,214,255,.35))}
-    h1{margin:0;font-size:34px;letter-spacing:.4px}
-    .muted{color:var(--muted)}
-    .badge{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid var(--line);border-radius:999px;background:rgba(18,25,35,.8)}
-    .toolbar{display:flex;gap:10px;flex-wrap:wrap}
-    button{padding:10px 14px;border-radius:12px;border:1px solid #33445b;background:linear-gradient(180deg,#202b3a,#18212d);color:#fff;cursor:pointer;font-weight:600}
-    button:hover{border-color:#4f6b8d;transform:translateY(-1px)}
-    .section{margin-top:28px}
-    .section h2{font-size:18px;margin:0 0 12px}
-    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px}
-    .card{background:linear-gradient(180deg,rgba(23,32,43,.95),rgba(17,24,33,.95));border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 12px 28px rgba(0,0,0,.18)}
-    .core-title{display:flex;align-items:center;justify-content:space-between;gap:12px}
-    .core-name{font-weight:700;font-size:16px}
-    .status{margin-top:14px;font-size:13px;font-weight:800;letter-spacing:.8px}
-    .ok{color:var(--good)}
-    .bad{color:var(--bad)}
-    .meta{margin-top:8px;color:var(--muted);font-size:13px;line-height:1.6}
-    code{color:#cfeeff}
-    .footer{margin-top:28px;color:var(--muted);font-size:13px}
-  </style>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>TooruDragon Control Center v0.3.0</title>
+  <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-<main>
-  <div class="hero">
+<div class="app">
+  <aside class="sidebar" id="sidebar">
     <div class="brand">
-      <div class="dragon">🐉</div>
+      <div class="brand-mark">🐉</div>
+      <div><h1>TooruDragon</h1><small>Control Center · v0.3.0</small></div>
+    </div>
+    <nav class="nav">
+      <button class="active" data-page="dashboard">⌂ <span>Обзор</span></button>
+      <button data-page="cores">◈ <span>Ядра</span></button>
+      <button data-page="tasks">✓ <span>Задачи</span></button>
+      <button data-page="events">⌁ <span>События</span></button>
+      <button data-page="agent">✦ <span>Агент</span></button>
+      <button data-page="control">⚙ <span>Control Plane</span></button>
+    </nav>
+    <div class="side-footer">
+      <div class="connection"><span id="conn-dot" class="dot"></span><span id="conn-text">Подключение...</span><br>Gateway :8698 · Supervisor :8699</div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
       <div>
-        <h1>TooruDragon</h1>
-        <div class="muted">Русская панель управления • v0.3.0</div>
+        <button class="btn mobile-menu" id="mobile-menu">☰</button>
+        <h2 id="page-title">Обзор</h2>
+        <div class="subtitle" id="page-subtitle">Состояние всей системы</div>
       </div>
-    </div>
-    <div class="toolbar">
-      <span class="badge">🧠 Main <code>:8700</code></span>
-      <span class="badge">🌐 Web <code>:8710</code></span>
-      <button onclick="refreshStatus()">🔄 Обновить состояние</button>
-    </div>
-  </div>
+      <div class="actions">
+        <span id="safe-mode-badge" class="status-pill online">Safe Mode выключен</span>
+        <button class="btn" id="refresh">↻ Обновить</button>
+      </div>
+    </header>
 
-  <div class="section">
-    <h2>✨ Состояние ядер</h2>
-    <div id="status" class="grid"></div>
-  </div>
+    <section class="page active" data-page="dashboard">
+      <div class="hero">
+        <div class="hero-card">
+          <div class="eyebrow">TooruDragon v0.3.0</div>
+          <div class="hero-title">Локальная AI-платформа под вашим контролем.</div>
+          <div class="hero-copy">Supervisor следит за жизненным циклом, Gateway переключает Blue/Green-маршруты, а Main Core объединяет события, задачи и агентный runtime.</div>
+        </div>
+        <div class="hero-card health-score">
+          <div><div class="eyebrow">System Health</div><div class="score" id="health-score">—</div></div>
+          <div class="subtitle" id="health-text">Проверяю систему...</div>
+        </div>
+      </div>
+      <div class="grid">
+        <div class="card metric"><div class="metric-label">Ядра online</div><div class="metric-value" id="metric-cores">—</div><div class="metric-note">Main + специализированные</div></div>
+        <div class="card metric"><div class="metric-label">RAM Main</div><div class="metric-value" id="metric-memory">—</div><div class="metric-note">resident memory</div></div>
+        <div class="card metric"><div class="metric-label">Durable events</div><div class="metric-value" id="metric-events">—</div><div class="metric-note">Event Fabric</div></div>
+        <div class="card metric"><div class="metric-label">Supervisor uptime</div><div class="metric-value" id="metric-uptime">—</div><div class="metric-note"><span id="deployment-count">0</span> active deployment</div></div>
+      </div>
+      <div class="section"><div class="section-head"><h3>Ядра</h3></div><div class="core-grid" id="core-grid"></div></div>
+    </section>
 
-  <div class="footer">
-    🛡 Watchdog следит за ядрами автоматически · 🧪 Проверки выполняются перед запуском · 💾 Система поддерживает переносной режим
-  </div>
-</main>
-<script>
-const names = {
-  tooru_ai: ['🐉','Tooru/AI'],
-  laboratory: ['🧪','Лаборатория Tooru/AI'],
-  home: ['🏠','Домашнее ядро'],
-  work: ['💼','Рабочее ядро'],
-  mobile: ['📱','Мобильное ядро']
-};
+    <section class="page" data-page="cores">
+      <div class="section-head">
+        <h3>Управление ядрами</h3>
+        <div class="actions">
+          <button class="btn danger" onclick="setSafeMode(true)">Включить Safe Mode</button>
+          <button class="btn good" onclick="setSafeMode(false)">Выключить Safe Mode</button>
+        </div>
+      </div>
+      <div class="core-grid" id="core-grid-secondary"></div>
+      <script>
+        // populated by app.js through mirrored dashboard grid
+      </script>
+      <div class="card panel"><div class="subtitle">Карточки управления синхронизированы с обзором. Lifecycle-команды идут через External Supervisor.</div></div>
+    </section>
 
-async function refreshStatus() {
-  const root = document.getElementById('status');
-  root.innerHTML = '<div class="card">🔎 Проверяю ядра...</div>';
-  try {
-    const res = await fetch('http://127.0.0.1:8700/cores', {cache:'no-store'});
-    const data = await res.json();
-    root.innerHTML = Object.entries(data.cores || {}).map(([name, state]) => {
-      const ok = !!state.ok;
-      const info = names[name] || ['⚙️', name];
-      const payload = state.payload || {};
-      return '<div class="card">' +
-        '<div class="core-title"><div class="core-name">'+info[0]+' '+info[1]+'</div><span>'+(ok?'🟢':'🔴')+'</span></div>' +
-        '<div class="status '+(ok?'ok':'bad')+'">'+(ok?'РАБОТАЕТ':'НЕДОСТУПНО')+'</div>' +
-        '<div class="meta">Версия: <code>'+(payload.version || '—')+'</code><br>' +
-        'HTTP: <code>'+(state.status_code || '—')+'</code></div>' +
-      '</div>';
-    }).join('');
-  } catch (err) {
-    root.innerHTML = '<div class="card bad">🔴 Главное ядро недоступно: '+err+'</div>';
-  }
-}
-refreshStatus();
-setInterval(refreshStatus, 5000);
-</script>
+    <section class="page" data-page="tasks">
+      <div class="two-col">
+        <div>
+          <div class="section-head"><h3>Durable Tasks</h3><button class="btn" onclick="loadTasks()">↻</button></div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>ID</th><th>Kind</th><th>State</th><th>Priority</th><th>Attempts</th><th>Workflow</th><th>Created</th></tr></thead>
+            <tbody id="tasks-body"></tbody>
+          </table></div>
+        </div>
+        <div class="card panel">
+          <div class="section-head"><h3>Новая задача</h3></div>
+          <div class="field"><label>Kind</label><input id="task-kind" value="work.manual"></div>
+          <div class="form-grid" style="margin-top:10px">
+            <div class="field"><label>Priority</label><input id="task-priority" type="number" value="100"></div>
+            <div class="field"><label>Max attempts</label><input id="task-attempts" type="number" value="3"></div>
+          </div>
+          <div class="field" style="margin-top:10px"><label>Required capability</label><input id="task-capability" placeholder="workflow.worker"></div>
+          <div class="field" style="margin-top:10px"><label>Idempotency key</label><input id="task-idempotency" placeholder="optional"></div>
+          <div class="field" style="margin-top:10px"><label>Payload JSON</label><textarea id="task-payload">{}</textarea></div>
+          <button class="btn primary" style="margin-top:12px;width:100%" onclick="createTask()">Создать задачу</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="page" data-page="events">
+      <div class="card panel">
+        <div class="section-head"><h3>Durable Event Fabric</h3><button class="btn" onclick="loadEvents()">↻</button></div>
+        <ul class="log" id="event-log"></ul>
+      </div>
+    </section>
+
+    <section class="page" data-page="agent">
+      <div class="two-col">
+        <div class="card panel">
+          <div class="section-head"><h3>Agent Runtime</h3></div>
+          <div class="field"><label>Agent ID</label><input id="agent-id" value="tooru_ai" oninput="loadAgent()"></div>
+          <div class="section" id="agent-tools"></div>
+          <div class="field section"><label>Tool</label><input id="tool-name" value="system.cores.snapshot"></div>
+          <div class="field" style="margin-top:10px"><label>Tool payload JSON</label><textarea id="tool-payload">{}</textarea></div>
+          <button class="btn primary" style="margin-top:12px" onclick="invokeAgentTool()">Вызвать tool</button>
+        </div>
+        <div class="card panel">
+          <div class="section-head"><h3>Plan → Workflow</h3></div>
+          <div class="field"><label>Steps JSON</label><textarea id="plan-steps">[
+  {"kind":"work.prepare","payload":{"source":"web"}},
+  {"kind":"work.execute","payload":{"source":"web"}}
+]</textarea></div>
+          <button class="btn primary" style="margin-top:12px" onclick="submitPlan()">Создать план</button>
+          <div class="section"><pre class="json" id="agent-result">Результат появится здесь.</pre></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="page" data-page="control">
+      <div class="section-head"><h3>Active Blue/Green Deployments</h3></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Core</th><th>Candidate port</th><th>PID</th><th>Previous slot</th><th>Actions</th></tr></thead>
+        <tbody id="deployments-body"></tbody>
+      </table></div>
+      <div class="section card panel">
+        <div class="section-head"><h3>Control Plane snapshot</h3><button class="btn" onclick="loadControlPlane()">↻</button></div>
+        <pre class="json" id="control-json">Загрузка...</pre>
+      </div>
+    </section>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+<script src="/app.js"></script>
 </body>
 </html>
