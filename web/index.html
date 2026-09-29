@@ -160,6 +160,19 @@
           <button class="btn" id="ai-memory-search">Найти похожее</button>
         </div>
         <pre class="json memory-results" id="ai-memory-results">Retrieval results появятся здесь.</pre>
+        <div class="rag-panel section">
+          <div class="section-head"><h3>RAG documents</h3><button class="btn" id="ai-rag-refresh">↻ Документы</button></div>
+          <div class="form-grid">
+            <div class="field"><label>Title</label><input id="ai-rag-title" placeholder="Название документа"></div>
+            <div class="field"><label>Source</label><input id="ai-rag-source" value="web"></div>
+          </div>
+          <div class="field" style="margin-top:10px"><label>Document text</label><textarea id="ai-rag-text" placeholder="Вставьте текст документа для chunking/indexing"></textarea></div>
+          <div class="actions" style="margin-top:10px">
+            <button class="btn primary" id="ai-rag-ingest">Индексировать</button>
+            <button class="btn" id="ai-rag-search">Искать по документам</button>
+          </div>
+          <pre class="json memory-results" id="ai-rag-results">RAG results появятся здесь.</pre>
+        </div>
       </div>
       <div class="section two-col">
         <div class="card panel">
