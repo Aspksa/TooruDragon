@@ -41,6 +41,10 @@ class Database:
         connection.row_factory = sqlite3.Row
         try:
             yield connection
+        except Exception:
+            connection.rollback()
+            raise
+        else:
             connection.commit()
         finally:
             connection.close()
