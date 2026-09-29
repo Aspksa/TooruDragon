@@ -8,6 +8,13 @@ if errorlevel 1 (
     exit /b 1
 )
 
+echo [TooruDragon] Initializing database...
+python "scripts\init_db.py"
+if errorlevel 1 (
+    echo [ERROR] Database initialization failed.
+    exit /b 1
+)
+
 echo [TooruDragon] Starting Tooru/AI Core...
 start "Tooru AI Core" cmd /k "core\tooru_ai\start.bat"
 
@@ -25,10 +32,15 @@ timeout /t 2 /nobreak >nul
 echo [TooruDragon] Starting Main Core...
 start "TooruDragon Main Core" cmd /k "core\main\start.bat"
 
+echo [TooruDragon] Starting Web UI...
+start "TooruDragon Web" cmd /k "web\start.bat"
+
 timeout /t 2 /nobreak >nul
 
 echo.
 echo [TooruDragon] Checking core health...
 python "scripts\check_health.py"
 
+echo.
+echo [TooruDragon] Web UI: http://127.0.0.1:8710
 endlocal
