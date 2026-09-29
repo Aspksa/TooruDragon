@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from .auth import AuthService
 from .config import (
     core_address,
@@ -106,7 +108,7 @@ class CoreRuntime:
         if routes:
             effective_routes.update(routes)
 
-        if self.name != "main":
+        if self.name != "main" and os.getenv("TOORUDRAGON_DISABLE_REGISTRY") != "1":
             self.registry_client.start()
 
         run_server(
