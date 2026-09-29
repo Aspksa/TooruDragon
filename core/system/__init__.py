@@ -1,3 +1,4 @@
+from .rag import RAGIndex
 from .ai_memory import AIMemoryStore
 from .chat_runtime import ChatConfig, ChatRuntime
 from .model_router import ModelProviderError, ModelRouter
@@ -31,6 +32,7 @@ __all__ = [
     "PROTOCOL_VERSION",
     "Planner",
     "PolicyEngine",
+    "RAGIndex",
     "Request",
     "Route",
     "SecretStore",
