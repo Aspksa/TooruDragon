@@ -78,20 +78,26 @@ function Test-Core([int]$port){
     }catch{return $null}
 }
 function Invoke-CoreAction([string]$Core,[string]$Action){
-    if($Core -eq "main"){
-        Notify "Core Manager" "Главное ядро управляется внешним Launcher, чтобы не завершать собственный API."
-        return $null
-    }
+    $body=@{core=$Core;action=$Action}|ConvertTo-Json -Compress
     try{
-        $body=@{core=$Core;action=$Action}|ConvertTo-Json -Compress
-        $headers=@{}
-        if($env:TOORUDRAGON_API_TOKEN){$headers["Authorization"]="Bearer "+$env:TOORUDRAGON_API_TOKEN}
-        $result=Invoke-RestMethod -Uri "http://127.0.0.1:8700/api/core/action" -Method Post -ContentType "application/json; charset=utf-8" -Headers $headers -Body $body -TimeoutSec 20
-        Notify "Core Manager" $result.message
+        $result=Invoke-RestMethod -Uri "http://127.0.0.1:8699/core/action" -Method Post -ContentType "application/json; charset=utf-8" -Body $body -TimeoutSec 20
+        Notify "Supervisor" ("{0}: {1}" -f $Core,$Action)
         return $result
     }catch{
-        Notify "Core Manager" ("Команда "+$Action+" для "+$Core+" завершилась ошибкой: "+$_.Exception.Message)
-        return $null
+        if($Core -eq "main"){
+            Notify "Supervisor" ("Команда "+$Action+" для Main Core завершилась ошибкой: "+$_.Exception.Message)
+            return $null
+        }
+        try{
+            $headers=@{}
+            if($env:TOORUDRAGON_API_TOKEN){$headers["Authorization"]="Bearer "+$env:TOORUDRAGON_API_TOKEN}
+            $result=Invoke-RestMethod -Uri "http://127.0.0.1:8700/api/core/action" -Method Post -ContentType "application/json; charset=utf-8" -Headers $headers -Body $body -TimeoutSec 20
+            Notify "Core Manager" $result.message
+            return $result
+        }catch{
+            Notify "Core Manager" ("Команда "+$Action+" для "+$Core+" завершилась ошибкой: "+$_.Exception.Message)
+            return $null
+        }
     }
 }
 function Stop-Port([int]$port){
@@ -122,7 +128,14 @@ function Start-System{
     }
 }
 function Stop-System{
+    $py=Find-Python
+    if($py){
+        try{& $py (Join-Path $Root "scripts\desired_state.py") stopped --all | Out-Null}catch{}
+    }
+    [void](Stop-Port 8710)
     foreach($c in ($cores|Sort-Object Port -Descending)){[void](Stop-Port $c.Port)}
+    [void](Stop-Port 8699)
+    Notify "TooruDragon" "Система остановлена. Desired state сохранён как stopped."
 }
 function Restart-System{
     Stop-System
@@ -179,6 +192,12 @@ function Test-Registry{
         return ($r.registry.online -ge 1)
     }catch{return $false}
 }
+function Test-Supervisor{
+    try{
+        $r=Invoke-RestMethod -Uri "http://127.0.0.1:8699/health" -TimeoutSec 1
+        return ($r.status -eq "ok")
+    }catch{return $false}
+}
 
 $tray=New-Object Windows.Forms.NotifyIcon
 $tray.Icon=$appIcon
@@ -213,7 +232,7 @@ $splash.Controls.Add($progress)
 $splash.Show();[Windows.Forms.Application]::DoEvents();Start-Sleep -Milliseconds 650
 
 $form=New-Object Windows.Forms.Form
-$form.Text="TooruDragon Launcher v0.1.0"
+$form.Text="TooruDragon Launcher v0.3.0-alpha"
 $form.Size=New-Object Drawing.Size(1420,900)
 $form.MinimumSize=New-Object Drawing.Size(1200,760)
 $form.StartPosition="CenterScreen"
@@ -225,7 +244,7 @@ $side=P 0 0 230 900 ([Drawing.Color]::FromArgb(8,10,20))
 $side.Dock=[Windows.Forms.DockStyle]::Left
 $form.Controls.Add($side)
 $side.Controls.Add((L "🐉 TooruDragon" 18 20 200 38 18 $text ([Drawing.FontStyle]::Bold)))
-$side.Controls.Add((L "Launcher  •  v0.1.0" 22 58 180 24 9 $muted))
+$side.Controls.Add((L "Launcher  •  v0.3.0-alpha" 22 58 190 24 9 $muted))
 
 $host=P 230 0 1170 860 $bg
 $host.Dock=[Windows.Forms.DockStyle]::Fill
@@ -367,16 +386,16 @@ $home.Controls.Add($diag)
 $diag.Controls.Add((L "⌁  Состояние системы" 18 9 300 34 14 $text ([Drawing.FontStyle]::Bold)))
 $diagLabels=@{}
 $x=18
-foreach($name in @("Python","Git","SQLite","Порты","Watchdog","Registry","UTF-8")){
-    $b=P $x 48 145 55 $panel2
+foreach($name in @("Python","Git","SQLite","Порты","Supervisor","Watchdog","Registry","UTF-8")){
+    $b=P $x 48 128 55 $panel2
     $s=L "●" 10 12 28 28 14 $yellow ([Drawing.FontStyle]::Bold)
-    $v=L "Проверка..." 44 29 110 20 8.5 $yellow
+    $v=L "Проверка..." 40 29 84 20 8 $yellow
     $b.Controls.Add($s)
-    $b.Controls.Add((L $name 44 7 110 22 9.5 $text ([Drawing.FontStyle]::Bold)))
+    $b.Controls.Add((L $name 40 7 84 22 8.6 $text ([Drawing.FontStyle]::Bold)))
     $b.Controls.Add($v)
     $diag.Controls.Add($b)
     $diagLabels[$name]=@($s,$v)
-    $x+=155
+    $x+=135
 }
 
 $corePage=$pages["Ядра"]
@@ -484,7 +503,7 @@ $timer.Add_Tick({
             $allOk=$false
         }
         if($script:corePrevious.ContainsKey($c.Key)){
-            if($script:corePrevious[$c.Key] -and -not $isUp){Notify "Ядро отключилось" ("{0} перестало отвечать. Watchdog попробует восстановить его." -f $c.Name)}
+            if($script:corePrevious[$c.Key] -and -not $isUp){Notify "Ядро отключилось" ("{0} перестало отвечать. Supervisor попробует восстановить его." -f $c.Name)}
             if((-not $script:corePrevious[$c.Key]) -and $isUp){Notify "Ядро восстановлено" ("{0} снова работает." -f $c.Name)}
         }
         $script:corePrevious[$c.Key]=$isUp
@@ -497,6 +516,7 @@ $timer.Add_Tick({
         "Git"=[bool](Get-Command git -ErrorAction SilentlyContinue)
         "SQLite"=(Test-Database)
         "Порты"=(Test-Ports)
+        "Supervisor"=(Test-Supervisor)
         "Watchdog"=(Test-Watchdog)
         "Registry"=(Test-Registry)
         "UTF-8"=(Test-Utf8)
