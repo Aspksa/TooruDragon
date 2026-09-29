@@ -77,6 +77,23 @@ function Test-Core([int]$port){
         return $r
     }catch{return $null}
 }
+function Invoke-CoreAction([string]$Core,[string]$Action){
+    if($Core -eq "main"){
+        Notify "Core Manager" "Главное ядро управляется внешним Launcher, чтобы не завершать собственный API."
+        return $null
+    }
+    try{
+        $body=@{core=$Core;action=$Action}|ConvertTo-Json -Compress
+        $headers=@{}
+        if($env:TOORUDRAGON_API_TOKEN){$headers["Authorization"]="Bearer "+$env:TOORUDRAGON_API_TOKEN}
+        $result=Invoke-RestMethod -Uri "http://127.0.0.1:8700/api/core/action" -Method Post -ContentType "application/json; charset=utf-8" -Headers $headers -Body $body -TimeoutSec 20
+        Notify "Core Manager" $result.message
+        return $result
+    }catch{
+        Notify "Core Manager" ("Команда "+$Action+" для "+$Core+" завершилась ошибкой: "+$_.Exception.Message)
+        return $null
+    }
+}
 function Stop-Port([int]$port){
     try{
         if(Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue){
@@ -375,17 +392,8 @@ foreach($c in $cores){
     $sp=B "■ Остановить" 810 19 125 44 $red
     $op=B "◎ Открыть" 945 19 120 44 $c.Color
     $st.Tag=$c;$sp.Tag=$c;$op.Tag=$c.Port
-    $st.Add_Click({
-        if($this.Tag.Key -eq "laboratory"){
-            $path=Join-Path $Root "core\workshop\start.bat"
-        }elseif($this.Tag.Key -eq "tooru_ai"){
-            $path=Join-Path $Root "core\tooru_ai\start.bat"
-        }else{
-            $path=Join-Path $Root ("core\"+$this.Tag.Key+"\start.bat")
-        }
-        if(Test-Path $path){Start-Process "cmd.exe" -ArgumentList @("/k",$path) -WorkingDirectory $Root}
-    })
-    $sp.Add_Click({[void](Stop-Port $this.Tag.Port)})
+    $st.Add_Click({[void](Invoke-CoreAction $this.Tag.Key "start")})
+    $sp.Add_Click({[void](Invoke-CoreAction $this.Tag.Key "stop")})
     $op.Add_Click({Start-Process ("http://127.0.0.1:{0}/health" -f $this.Tag)})
     $row.Controls.Add($st);$row.Controls.Add($sp);$row.Controls.Add($op)
     $corePage.Controls.Add($row)
