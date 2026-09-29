@@ -3,11 +3,17 @@ from __future__ import annotations
 import logging
 from logging.handlers import RotatingFileHandler
 
-from .paths import LOG_DIR
+from .config import system_config
+from .paths import ROOT
 
 
 def get_logger(name: str) -> logging.Logger:
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    config = system_config().get("logging", {})
+    log_dir = ROOT / config.get("directory", "logs")
+    max_bytes = int(config.get("rotation_bytes", 2_000_000))
+    backup_count = int(config.get("backup_count", 5))
+
+    log_dir.mkdir(parents=True, exist_ok=True)
 
     logger = logging.getLogger(f"toorudragon.{name}")
     if logger.handlers:
@@ -23,9 +29,9 @@ def get_logger(name: str) -> logging.Logger:
     logger.addHandler(console)
 
     file_handler = RotatingFileHandler(
-        LOG_DIR / f"{name}.log",
-        maxBytes=2_000_000,
-        backupCount=5,
+        log_dir / f"{name}.log",
+        maxBytes=max_bytes,
+        backupCount=backup_count,
         encoding="utf-8",
     )
     file_handler.setFormatter(formatter)
