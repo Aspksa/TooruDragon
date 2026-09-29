@@ -121,7 +121,7 @@ function Find-Python{
 function Test-Database{
     $py=Find-Python
     if(-not $py){return $false}
-    & $py -c "import sqlite3; c=sqlite3.connect(r'data/toorudragon.db'); c.execute('select 1'); c.close()" 2>$null
+    & $py -c "import sqlite3; c=sqlite3.connect(r'data/toorudragon.db'); c.execute('select value from system_meta limit 1').fetchone(); c.close()" 2>$null
     return ($LASTEXITCODE -eq 0)
 }
 function Test-Utf8{
@@ -336,8 +336,7 @@ $diagLabels=@{}
 $x=18
 foreach($name in @("Python","Git","SQLite","Порты","Watchdog","UTF-8")){
     $b=P $x 48 165 55 $panel2
-    $s=L "●" 10 12 28 28 14 $yellow ([Drawing.FontStyle]::Bold
-)
+    $s=L "●" 10 12 28 28 14 $yellow ([Drawing.FontStyle]::Bold)
     $v=L "Проверка..." 44 29 110 20 8.5 $yellow
     $b.Controls.Add($s)
     $b.Controls.Add((L $name 44 7 110 22 9.5 $text ([Drawing.FontStyle]::Bold)))
