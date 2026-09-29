@@ -1,4 +1,4 @@
-# TooruDragon v0.2.0 Alpha
+# TooruDragon v0.3.0 Alpha
 
 Дата старта: **29 сентября 2026**
 
@@ -15,7 +15,7 @@ TooruDragon — модульная AI-система с единым систе�
 - **Рабочее ядро** — `127.0.0.1:8704` — **v0.1.0**
 - **Мобильное ядро** — `127.0.0.1:8705` — **v0.1.0**
 
-Системная платформа проекта — **v0.2.0 Alpha**, а версии самих ядер теперь отображаются просто как **v0.1.0** и хранятся централизованно в `config/cores.json`.
+Системная платформа проекта — **v0.3.0 Alpha**, а версии самих ядер теперь отображаются просто как **v0.1.0** и хранятся централизованно в `config/cores.json`.
 
 ## System Layer
 
@@ -97,7 +97,7 @@ TooruDragon — модульная AI-система с единым систе�
 
 ## Статус
 
-**Alpha / v0.2.0**
+**Alpha / v0.3.0**
 
 
 ## 🐉 Русский переносной лаунчер
@@ -386,3 +386,79 @@ TooruDragon получил новый фундамент Control Plane без л
 Подробная архитектура: `docs/PLATFORM_V02.md`.
 
 Важно: текущий Supervisor пока **embedded abstraction** внутри Python-платформы. Это намеренный migration seam для будущего отдельного Rust/Windows Service/Linux daemon, а не фиктивное заявление о уже существующем внешнем supervisor.
+
+
+## 🐉 Core Platform v0.3 — независимый Control Plane
+
+TooruDragon теперь имеет внешний Supervisor на `127.0.0.1:8699`, который живёт
+отдельно от Main Core и способен восстановить Main после сбоя.
+
+Ключевые изменения v0.3:
+
+- **External Supervisor** с desired-state, recovery и Safe Mode;
+- crash-loop protection с restart budget;
+- **Durable Event Fabric** вместо только in-memory событий;
+- replay / ack / consumer offsets / dead-letter queue;
+- `/live`, `/ready`, `/health`;
+- request correlation через `X-Request-Id`;
+- Observability API;
+- capability-gated **Agent Runtime**;
+- bounded deterministic Planner;
+- Policy-gated Tool Router;
+- dependency-aware Workflow Engine;
+- каскадная отмена потомков при terminal dependency failure;
+- Blue/Green candidate staging на временном порту;
+- staged candidate не может затереть production Service Registry;
+- Launcher управляет lifecycle через внешний Supervisor;
+- Stop All сохраняет desired-state и не вызывает автоматическое «воскрешение» сервисов.
+
+### Supervisor
+
+```text
+GET  http://127.0.0.1:8699/health
+GET  http://127.0.0.1:8699/status
+POST http://127.0.0.1:8699/core/action
+POST http://127.0.0.1:8699/safe-mode/enable
+POST http://127.0.0.1:8699/safe-mode/disable
+```
+
+При включённом Bearer auth управляющие POST-запросы Supervisor используют тот же
+`TOORUDRAGON_API_TOKEN`.
+
+### Durable Event Fabric
+
+```text
+GET  /events
+POST /events/publish
+GET  /events/replay?consumer=<name>
+POST /events/ack
+POST /events/dlq
+```
+
+### Agent Runtime
+
+```text
+POST /agents/plan
+GET  /agents/tools?agent_id=tooru_ai
+POST /agents/tool/invoke
+```
+
+Агенты работают по принципу **default deny**. Наличие Agent Runtime не означает
+автоматический доступ LLM к shell, файлам или секретам.
+
+### Observability
+
+```text
+GET /observability
+```
+
+Возвращает uptime, PID, память процесса, CPU-time (где поддерживается),
+runtime counters и статистику Event Fabric.
+
+### Blue/Green
+
+В v0.3 реализованы staging и health-probe кандидата. Полный zero-downtime traffic
+switch **ещё не заявляется**, потому что канонические порты пока принадлежат самим
+ядрам. Следующий шаг — локальный gateway/router с dynamic internal ports.
+
+Подробности: `docs/PLATFORM_V03.md`.
