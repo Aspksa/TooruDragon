@@ -25,9 +25,32 @@ def cores_config() -> dict:
     return _load_json(CORES_CONFIG_PATH)
 
 
+def core_config(name: str) -> dict:
+    config = cores_config()
+    core = config["cores"][name]
+    if isinstance(core, int):
+        return {
+            "port": core,
+            "version": version(),
+            "display_name": name,
+        }
+    return dict(core)
+
+
 def core_address(name: str) -> tuple[str, int]:
     config = cores_config()
-    return config.get("host", "127.0.0.1"), int(config["cores"][name])
+    core = core_config(name)
+    return config.get("host", "127.0.0.1"), int(core["port"])
+
+
+def core_version(name: str) -> str:
+    core = core_config(name)
+    return str(core.get("version", version()))
+
+
+def core_display_name(name: str) -> str:
+    core = core_config(name)
+    return str(core.get("display_name", name))
 
 
 def version() -> str:
