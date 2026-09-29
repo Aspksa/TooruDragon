@@ -4,7 +4,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
 $OutputEncoding = [Console]::OutputEncoding
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 Set-Location $Root
@@ -29,7 +29,7 @@ function Test-WritableFolder([string]$Path) {
     try {
         New-Item -ItemType Directory -Force -Path $Path | Out-Null
         $test = Join-Path $Path ".toorudragon-write-test"
-        [IO.File]::WriteAllText($test,"ok",[Text.UTF8Encoding]::new($false))
+        [IO.File]::WriteAllText($test,"ok",(New-Object System.Text.UTF8Encoding($false)))
         Remove-Item $test -Force
         return $true
     } catch { return $false }
@@ -51,8 +51,11 @@ function Find-Python {
     if(Test-Path $portable){ return $portable }
     foreach($cmd in @("python","py")){
         try {
-            if($cmd -eq "py"){ $path=& py -3 -c "import sys; print(sys.executable)" 2>$null }
-            else { $path=& python -c "import sys; print(sys.executable)" 2>$null }
+            if($cmd -eq "py"){
+                $path=& py -3 -c "import sys; print(sys.executable if sys.version_info >= (3,11) else '')" 2>$null
+            } else {
+                $path=& python -c "import sys; print(sys.executable if sys.version_info >= (3,11) else '')" 2>$null
+            }
             if($LASTEXITCODE -eq 0 -and $path){ return ($path|Select-Object -First 1).Trim() }
         } catch {}
     }
@@ -109,16 +112,20 @@ function Run-Preflight([string]$Python) {
     if($LASTEXITCODE -eq 0){Write-Ok "SQLite и схема базы данных готовы"}else{Write-Fail "Ошибка инициализации базы данных";$failures++}
 
     $busy=@()
-    foreach($port in 8700..8705){
-        $listener=Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue
-        if($listener){$busy+=$port}
+    if(Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue){
+        foreach($port in 8700..8705){
+            $listener=Get-NetTCPConnection -State Listen -LocalPort $port -ErrorAction SilentlyContinue
+            if($listener){$busy+=$port}
+        }
+        if($busy.Count -eq 0){Write-Ok "Порты 8700–8705 свободны"}else{Write-Warn "Порты уже заняты: $($busy -join ', '). Возможно, TooruDragon уже запущен."}
+    } else {
+        Write-Warn "Системная проверка TCP-портов недоступна на этой версии Windows — продолжаю запуск"
     }
-    if($busy.Count -eq 0){Write-Ok "Порты 8700–8705 свободны"}else{Write-Warn "Порты уже заняты: $($busy -join ', '). Возможно, TooruDragon уже запущен."}
 
     $ruTest="Тору • Господин • Проверка русского языка • 🐉"
     try {
         $utfFile=Join-Path $Root "runtime\utf8-test.txt"
-        [IO.File]::WriteAllText($utfFile,$ruTest,[Text.UTF8Encoding]::new($false))
+        [IO.File]::WriteAllText($utfFile,$ruTest,(New-Object System.Text.UTF8Encoding($false)))
         $readBack=[IO.File]::ReadAllText($utfFile,[Text.Encoding]::UTF8)
         Remove-Item $utfFile -Force
         if($readBack -eq $ruTest){Write-Ok "Русский язык и UTF-8 работают корректно"}else{throw "Текст после записи изменился"}
