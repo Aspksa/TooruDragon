@@ -65,8 +65,8 @@
       <div class="section-head">
         <h3>Управление ядрами</h3>
         <div class="actions">
-          <button class="btn danger" onclick="setSafeMode(true)">Включить Safe Mode</button>
-          <button class="btn good" onclick="setSafeMode(false)">Выключить Safe Mode</button>
+          <button class="btn danger" id="safe-mode-enable">Включить Safe Mode</button>
+          <button class="btn good" id="safe-mode-disable">Выключить Safe Mode</button>
         </div>
       </div>
       <div class="core-grid" id="core-grid-secondary"></div>
@@ -76,7 +76,7 @@
     <section class="page" data-page="tasks">
       <div class="two-col">
         <div>
-          <div class="section-head"><h3>Durable Tasks</h3><button class="btn" onclick="loadTasks()">↻</button></div>
+          <div class="section-head"><h3>Durable Tasks</h3><button class="btn" id="tasks-refresh">↻</button></div>
           <div class="table-wrap"><table>
             <thead><tr><th>ID</th><th>Kind</th><th>State</th><th>Priority</th><th>Attempts</th><th>Workflow</th><th>Created</th></tr></thead>
             <tbody id="tasks-body"></tbody>
@@ -92,14 +92,14 @@
           <div class="field" style="margin-top:10px"><label>Required capability</label><input id="task-capability" placeholder="workflow.worker"></div>
           <div class="field" style="margin-top:10px"><label>Idempotency key</label><input id="task-idempotency" placeholder="optional"></div>
           <div class="field" style="margin-top:10px"><label>Payload JSON</label><textarea id="task-payload">{}</textarea></div>
-          <button class="btn primary" style="margin-top:12px;width:100%" onclick="createTask()">Создать задачу</button>
+          <button class="btn primary" style="margin-top:12px;width:100%" id="task-create">Создать задачу</button>
         </div>
       </div>
     </section>
 
     <section class="page" data-page="events">
       <div class="card panel">
-        <div class="section-head"><h3>Durable Event Fabric</h3><button class="btn" onclick="loadEvents()">↻</button></div>
+        <div class="section-head"><h3>Durable Event Fabric</h3><button class="btn" id="events-refresh">↻</button></div>
         <ul class="log" id="event-log"></ul>
       </div>
     </section>
@@ -108,11 +108,11 @@
       <div class="two-col">
         <div class="card panel">
           <div class="section-head"><h3>Agent Runtime</h3></div>
-          <div class="field"><label>Agent ID</label><input id="agent-id" value="tooru_ai" oninput="loadAgent()"></div>
+          <div class="field"><label>Agent ID</label><input id="agent-id" value="tooru_ai" ></div>
           <div class="section" id="agent-tools"></div>
           <div class="field section"><label>Tool</label><input id="tool-name" value="system.cores.snapshot"></div>
           <div class="field" style="margin-top:10px"><label>Tool payload JSON</label><textarea id="tool-payload">{}</textarea></div>
-          <button class="btn primary" style="margin-top:12px" onclick="invokeAgentTool()">Вызвать tool</button>
+          <button class="btn primary" style="margin-top:12px" id="agent-tool-invoke">Вызвать tool</button>
         </div>
         <div class="card panel">
           <div class="section-head"><h3>Plan → Workflow</h3></div>
@@ -120,7 +120,7 @@
   {"kind":"work.prepare","payload":{"source":"web"}},
   {"kind":"work.execute","payload":{"source":"web"}}
 ]</textarea></div>
-          <button class="btn primary" style="margin-top:12px" onclick="submitPlan()">Создать план</button>
+          <button class="btn primary" style="margin-top:12px" id="agent-plan-submit">Создать план</button>
           <div class="section"><pre class="json" id="agent-result">Результат появится здесь.</pre></div>
         </div>
       </div>
@@ -133,7 +133,7 @@
         <tbody id="deployments-body"></tbody>
       </table></div>
       <div class="section card panel">
-        <div class="section-head"><h3>Control Plane snapshot</h3><button class="btn" onclick="loadControlPlane()">↻</button></div>
+        <div class="section-head"><h3>Control Plane snapshot</h3><button class="btn" id="control-refresh">↻</button></div>
         <pre class="json" id="control-json">Загрузка...</pre>
       </div>
     </section>
