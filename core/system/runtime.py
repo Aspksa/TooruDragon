@@ -11,13 +11,20 @@ from .config import (
 from .database import Database
 from .event_client import EventBusClient
 from .logging import get_logger
+from .registry_client import RegistryClient
 from .server import Request, Route, run_server
 
 
 class CoreRuntime:
-    def __init__(self, name: str, role: str):
+    def __init__(
+        self,
+        name: str,
+        role: str,
+        capabilities: list[str] | None = None,
+    ):
         self.name = name
         self.role = role
+        self.capabilities = list(capabilities or [])
         self.version = core_version(name)
         self.display_name = core_display_name(name)
         self.host, self.port = core_address(name)
@@ -42,10 +49,29 @@ class CoreRuntime:
             if isinstance(main_entry, dict)
             else main_entry
         )
+        main_url = f"http://{self.config_host}:{main_port}"
+
         self.events = EventBusClient(
-            base_url=f"http://{self.config_host}:{main_port}",
+            base_url=main_url,
             token=str(auth_config.get("token", "")),
             logger=self.logger,
+        )
+
+        registry_config = self.config.get("service_registry", {})
+        self.registry_client = RegistryClient(
+            base_url=main_url,
+            service={
+                "name": self.name,
+                "display_name": self.display_name,
+                "version": self.version,
+                "host": self.host,
+                "port": self.port,
+                "role": self.role,
+                "capabilities": self.capabilities,
+            },
+            token=str(auth_config.get("token", "")),
+            logger=self.logger,
+            heartbeat_seconds=int(registry_config.get("heartbeat_seconds", 10)),
         )
 
     def health(self, _request: Request):
@@ -55,6 +81,7 @@ class CoreRuntime:
             "version": self.version,
             "status": "ok",
             "role": self.role,
+            "capabilities": self.capabilities,
         }
 
     def system_info(self, _request: Request):
@@ -66,6 +93,7 @@ class CoreRuntime:
             "port": self.port,
             "database": str(self.db.path),
             "auth_required": self.auth.required,
+            "capabilities": self.capabilities,
         }
 
     def run(self, routes: dict[str, Route] | None = None) -> None:
@@ -77,6 +105,9 @@ class CoreRuntime:
         }
         if routes:
             effective_routes.update(routes)
+
+        if self.name != "main":
+            self.registry_client.start()
 
         run_server(
             self.name,
