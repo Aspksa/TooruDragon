@@ -648,6 +648,49 @@ async function searchAIMemory() {
   }
 }
 
+async function loadRAGDocuments() {
+  try {
+    const data = await api("/api/tooru_ai/rag/documents?limit=50");
+    $("#ai-rag-results").textContent = JSON.stringify(data.documents || [], null, 2);
+  } catch (e) {
+    $("#ai-rag-results").textContent = e.message;
+  }
+}
+
+async function ingestRAGDocument() {
+  const text = $("#ai-rag-text").value.trim();
+  if (!text) return;
+  try {
+    const data = await api("/api/tooru_ai/rag/ingest", {
+      method:"POST",
+      body:JSON.stringify({
+        text,
+        title:$("#ai-rag-title").value.trim() || null,
+        source:$("#ai-rag-source").value.trim() || "web",
+      }),
+    });
+    $("#ai-rag-text").value = "";
+    $("#ai-rag-results").textContent = JSON.stringify(data.document, null, 2);
+    appendConsole("RAG", `indexed ${data.document.chunk_count} chunks · ${data.document.id.slice(0,8)}`);
+    toast("Документ проиндексирован");
+  } catch (e) {
+    appendConsole("ERROR", "rag ingest: " + e.message, true);
+    toast(e.message, true);
+  }
+}
+
+async function searchRAGDocuments() {
+  const query = $("#ai-memory-input").value.trim() || $("#ai-chat-input").value.trim();
+  if (!query) return;
+  try {
+    const data = await api(`/api/tooru_ai/rag/search?q=${encodeURIComponent(query)}&limit=10`);
+    $("#ai-rag-results").textContent = JSON.stringify(data.chunks || [], null, 2);
+  } catch (e) {
+    $("#ai-rag-results").textContent = e.message;
+    toast(e.message, true);
+  }
+}
+
 async function loadAgent() {
   const id = $("#agent-id").value.trim() || "tooru_ai";
   try {
@@ -711,7 +754,7 @@ function showPage(name) {
   if(name==="tasks") loadTasks();
   if(name==="workflow") loadWorkflow();
   if(name==="events") loadEvents();
-  if(name==="agent") { loadAgent(); loadAIRuntime(); }
+  if(name==="agent") { loadAgent(); loadAIRuntime(); loadRAGDocuments(); }
   if(name==="control") loadControlPlane();
   if(name==="audit") loadAudit();
   if(innerWidth<760) $("#sidebar").classList.remove("open");
@@ -759,6 +802,9 @@ $("#ai-chat-input").addEventListener("keydown",event=>{
 $("#ai-conversation").addEventListener("change",event=>loadAIConversation(event.target.value));
 $("#ai-memory-save").addEventListener("click",saveAIMemory);
 $("#ai-memory-search").addEventListener("click",searchAIMemory);
+$("#ai-rag-ingest").addEventListener("click",ingestRAGDocument);
+$("#ai-rag-search").addEventListener("click",searchRAGDocuments);
+$("#ai-rag-refresh").addEventListener("click",loadRAGDocuments);
 $("#control-refresh").addEventListener("click",loadControlPlane);
 $("#workflow-refresh").addEventListener("click",loadWorkflow);
 $("#workflow-select").addEventListener("change",event=>{
