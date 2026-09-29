@@ -40,7 +40,9 @@ def core_config(name: str) -> dict:
 def core_address(name: str) -> tuple[str, int]:
     config = cores_config()
     core = core_config(name)
-    return config.get("host", "127.0.0.1"), int(core["port"])
+    override = os.getenv("TOORUDRAGON_PORT_OVERRIDE")
+    port = int(override) if override else int(core["port"])
+    return config.get("host", "127.0.0.1"), port
 
 
 def core_version(name: str) -> str:
