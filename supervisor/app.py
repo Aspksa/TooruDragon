@@ -75,6 +75,9 @@ def recovery_loop() -> None:
         for name in cores:
             if name == "main":
                 continue
+            if manager.desired_state(name) == "stopped":
+                failures[name] = 0
+                continue
             status = manager.status(name)
             if status.get("online"):
                 failures[name] = 0
