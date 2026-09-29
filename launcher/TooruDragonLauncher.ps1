@@ -396,11 +396,13 @@ $folder=B "📁 Открыть папку проекта" 24 435 250 46 $purple
 $folder.Add_Click({Start-Process explorer.exe $Root})
 $box.Controls.Add($folder)
 
+$script:lastAllOk=$false
 $timer=New-Object Windows.Forms.Timer
-$timer.Interval=1500
+$timer.Interval=1600
 $timer.Add_Tick({
     $clock.Text=Get-Date -Format "HH:mm"
     $date.Text=Get-Date -Format "dd.MM.yyyy"
+    $allOk=$true
     foreach($c in $cores){
         $h=Test-Core $c.Port
         if($h){
@@ -410,13 +412,45 @@ $timer.Add_Tick({
         }else{
             $statusLabels[$c.Key].Text="● Выключено"
             $statusLabels[$c.Key].ForeColor=$red
+            $allOk=$false
+        }
+    }
+    if($allOk -and -not $script:lastAllOk){Notify "TooruDragon" "Все ядра работают стабильно. ♡"}
+    $script:lastAllOk=$allOk
+
+    $checks=@{
+        "Python"=[bool](Find-Python)
+        "Git"=[bool](Get-Command git -ErrorAction SilentlyContinue)
+        "SQLite"=(Test-Database)
+        "Порты"=(Test-Ports)
+        "Watchdog"=(Test-Watchdog)
+        "UTF-8"=(Test-Utf8)
+    }
+    foreach($k in $checks.Keys){
+        $pair=$diagLabels[$k]
+        if($checks[$k]){
+            $pair[0].Text="✔";$pair[0].ForeColor=$green;$pair[1].Text="Готово";$pair[1].ForeColor=$green
+        }else{
+            $pair[0].Text="✖";$pair[0].ForeColor=$red;$pair[1].Text="Ошибка";$pair[1].ForeColor=$red
         }
     }
 })
 $timer.Start()
 
+$script:AllowExit=$false
+$miOpen.Add_Click({$form.Show();$form.WindowState=[Windows.Forms.FormWindowState]::Normal;$form.Activate()})
+$miStart.Add_Click({Start-System})
+$miRestart.Add_Click({Restart-System})
+$miStop.Add_Click({Stop-System})
+$miWeb.Add_Click({Start-Process "http://127.0.0.1:8710"})
+$tray.Add_DoubleClick({$form.Show();$form.WindowState=[Windows.Forms.FormWindowState]::Normal;$form.Activate()})
+$miExit.Add_Click({$script:AllowExit=$true;$timer.Stop();$tray.Visible=$false;$form.Close()})
+$form.Add_Resize({if($form.WindowState -eq [Windows.Forms.FormWindowState]::Minimized){$form.Hide();Notify "TooruDragon" "Лаунчер свёрнут в системный трей."}})
+$form.Add_FormClosing({if(-not $script:AllowExit){$_.Cancel=$true;$form.Hide();Notify "TooruDragon" "TooruDragon продолжает работать в трее."}})
+
 $pages["Главная"].Visible=$true
 $nav["Главная"].BackColor=[Drawing.Color]::FromArgb(67,42,112)
-
+$splash.Close();$splash.Dispose()
+Notify "TooruDragon" "Лаунчер готов, господин. 🐉"
 [void]$form.ShowDialog()
-$timer.Stop()
+$timer.Stop();$tray.Dispose()
