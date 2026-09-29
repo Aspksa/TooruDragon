@@ -158,8 +158,13 @@ class AIMemoryStore:
                 ),
             )
             db.execute(
-                "UPDATE ai_conversations SET updated_at=? WHERE id=?",
-                (now, conversation_id),
+                """
+                UPDATE ai_conversations
+                SET updated_at=?,
+                    title=COALESCE(NULLIF(title, ''), ?)
+                WHERE id=?
+                """,
+                (now, user_content.strip()[:80], conversation_id),
             )
         return {
             "user": {
