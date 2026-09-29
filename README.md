@@ -545,7 +545,7 @@ Tooru/AI теперь имеет настоящий model/runtime слой:
 
 - provider-independent **Model Router**;
 - OpenAI-compatible local/remote providers;
-- реальные `/chat`, `/models`, `/runtime`;
+- реальные `/chat`, `/inference`, `/models`, `/runtime`;
 - persistent conversations;
 - explicit retrieval memory;
 - локальный RAG document index;
