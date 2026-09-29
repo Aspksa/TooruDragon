@@ -61,6 +61,10 @@ function B([string]$t,[int]$x,[int]$y,[int]$w,[int]$h,[Drawing.Color]$c){
     $o.ForeColor=$text
     $o.Font=F 10 ([Drawing.FontStyle]::Bold)
     $o.Cursor=[Windows.Forms.Cursors]::Hand
+    $normal=$panel2
+    $hover=[Drawing.Color]::FromArgb(45,35,72)
+    $o.Add_MouseEnter({$this.BackColor=$hover})
+    $o.Add_MouseLeave({$this.BackColor=$normal})
     $o
 }
 
@@ -238,21 +242,19 @@ if(Test-Path $artPath){
     }catch{}
 }
 
-$shade=P 0 0 1110 230 ([Drawing.Color]::FromArgb(170,9,12,23))
-$shade.Dock=[Windows.Forms.DockStyle]::Fill
-$hero.Controls.Add($shade)
+$heroInfo=P 610 15 480 200 ([Drawing.Color]::FromArgb(12,16,30))
+$hero.Controls.Add($heroInfo)
+$heroInfo.Controls.Add((L "TooruDragon" 22 18 310 48 27 $text ([Drawing.FontStyle]::Bold)))
+$heroInfo.Controls.Add((L "ВАШ МИР. ВАШ ИИ. ВАШ ДРАКОН." 24 66 390 25 10 $pink ([Drawing.FontStyle]::Bold)))
+$heroInfo.Controls.Add((L "«Я рядом, господин.»" 24 106 300 29 12 $text))
+$heroInfo.Controls.Add((L "Главная панель управления" 24 143 300 24 9.5 $muted))
 
-$shade.Controls.Add((L "TooruDragon" 30 28 520 55 31 $text ([Drawing.FontStyle]::Bold)))
-$shade.Controls.Add((L "ВАШ ЛИЧНЫЙ МИР. ВАШ ИИ. ВАШ ДРАКОН." 33 85 650 28 11 $pink ([Drawing.FontStyle]::Bold)))
-$shade.Controls.Add((L "«Я рядом, господин. Всё готово к запуску.»" 33 132 650 34 13 $text))
-$shade.Controls.Add((L "Главная панель управления системой" 33 175 550 28 10 $muted))
-
-$clock=L "" 840 45 230 62 28 $text ([Drawing.FontStyle]::Bold)
+$clock=L "" 335 15 125 45 20 $text ([Drawing.FontStyle]::Bold)
 $clock.TextAlign=[Drawing.ContentAlignment]::MiddleRight
-$shade.Controls.Add($clock)
-$date=L "" 840 108 230 28 10 $muted
+$heroInfo.Controls.Add($clock)
+$date=L "" 335 61 125 24 9 $muted
 $date.TextAlign=[Drawing.ContentAlignment]::MiddleRight
-$shade.Controls.Add($date)
+$heroInfo.Controls.Add($date)
 
 $actions=P 18 263 1110 84 $panel
 $home.Controls.Add($actions)
@@ -392,7 +394,7 @@ $autoOff.Add_Click({& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (J
 $shortcut.Add_Click({& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root "scripts\create_shortcut.ps1");Notify "Ярлык" "Ярлык создан на рабочем столе."})
 $box.Controls.Add($autoOn);$box.Controls.Add($autoOff);$box.Controls.Add($shortcut)
 $box.Controls.Add((L "Оформление" 24 145 300 30 13 $text ([Drawing.FontStyle]::Bold)))
-$box.Controls.Add((L "Аниме-фон: assets\launcher\tooru-maid.png" 24 185 600 26 10 $pink))
+$box.Controls.Add((L "Аниме-фон: assets\launcher\tooru-maid.jpg" 24 185 600 26 10 $pink))
 $box.Controls.Add((L "Логотип: assets\launcher\logo.svg" 24 216 600 26 10 $cyan))
 $assets=B "♡ Открыть папку оформления" 24 260 280 46 $pink
 $assets.Add_Click({$p=Join-Path $Root "assets\launcher";New-Item -ItemType Directory -Force -Path $p|Out-Null;Start-Process explorer.exe $p})
