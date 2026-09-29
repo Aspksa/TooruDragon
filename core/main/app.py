@@ -180,7 +180,7 @@ def routes(_request):
             "/api/cores": "Core Manager: статусы всех ядер",
             "/api/core/action": "Core Manager: start/stop/restart ядра",
             "/api/core/history": "История управляющих действий",
-            "/platform": "Состояние Control Plane v0.2",
+            "/platform": "Состояние Control Plane v0.3",
             "/api/tasks": "Список durable-задач",
             "/api/task/create": "Создать durable-задачу",
             "/api/task/claim": "Захватить задачу worker-ом",
@@ -222,7 +222,8 @@ def publish_event(request):
     if not isinstance(event_payload, dict):
         return 400, {"error": "payload_must_be_object"}
 
-    event = event_bus.publish(topic, source, event_payload)
+    trace_id = str(payload.get("trace_id") or request.request_id)
+    event = event_bus.publish(topic, source, event_payload, trace_id=trace_id)
     runtime.logger.info("Event published: %s from %s", topic, source)
     return 201, {"event": event}
 
@@ -326,7 +327,8 @@ def agent_plan(request):
             trace_id=payload.get("trace_id"),
         )
     except (ValueError, TypeError, PermissionError) as exc:
-        return 403 if isinstance(exc, PermissionError) else 400, {
+        status = 403 if isinstance(exc, PermissionError) else 400
+        return status, {
             "error": "agent_plan_rejected",
             "message": str(exc),
         }
@@ -512,6 +514,7 @@ def task_create(request):
             "kind": task["kind"],
             "trace_id": task["trace_id"],
         },
+        trace_id=task["trace_id"],
     )
     return 201, {"task": task}
 
@@ -593,6 +596,7 @@ def task_update(request):
             "state": task["state"],
             "trace_id": task["trace_id"],
         },
+        trace_id=task["trace_id"],
     )
     return 200, {"task": task}
 
