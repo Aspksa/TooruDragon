@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://toorudragon.local/contracts/task.v1.schema.json",
+  "title": "TooruDragon Task v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "payload"
+  ],
+  "properties": {
+    "kind": {
+      "type": "string",
+      "minLength": 1
+    },
+    "payload": {
+      "type": "object"
+    },
+    "workflow_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "parent_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "priority": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "max_attempts": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100
+    },
+    "idempotency_key": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "available_at": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "trace_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "required_capability": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}
