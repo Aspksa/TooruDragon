@@ -79,7 +79,7 @@ TooruDragon — модульная AI-система с единым систе�
 
 1. **Event Bus** — центральная шина событий в Main Core. Ядра могут публиковать события через `runtime.events.publish(...)`, а последние события доступны через `GET /events`.
 
-2. **Watchdog** — Main Core проверяет специализированные ядра, считает последовательные сбои и на Windows автоматически перезапускает упавшее ядро после достижения порога. Состояние доступно через `GET /watchdog`.
+2. **Watchdog** — Main Core сохраняет мониторинг состояния. При включённом External Supervisor автоматическое восстановление выполняет Supervisor, чтобы исключить двойной restart. Состояние Watchdog доступно через `GET /watchdog`.
 
 3. **Compatibility Manager** — проверяет совместимость версий ядер по правилам из `config/compatibility.json`. Результат доступен через `GET /compatibility`.
 
@@ -455,10 +455,40 @@ GET /observability
 Возвращает uptime, PID, память процесса, CPU-time (где поддерживается),
 runtime counters и статистику Event Fabric.
 
-### Blue/Green
+### Blue/Green Gateway
 
-В v0.3 реализованы staging и health-probe кандидата. Полный zero-downtime traffic
-switch **ещё не заявляется**, потому что канонические порты пока принадлежат самим
-ядрам. Следующий шаг — локальный gateway/router с dynamic internal ports.
+В v0.3 работает локальный Gateway на `127.0.0.1:8698`.
+
+Для специализированного ядра Rolling Update:
+
+```text
+candidate :970x
+    ↓ health OK
+Gateway → candidate
+    ↓
+restart canonical :870x
+    ↓ health OK
+Gateway → canonical
+    ↓
+candidate stop
+```
+
+Supervisor управляет `promote / rollback / complete`, а активное deployment-state
+хранится в SQLite и восстанавливается после рестарта control-plane.
+
+Маршруты Gateway:
+
+```text
+/core/tooru_ai/...
+/core/laboratory/...
+/core/home/...
+/core/work/...
+/core/mobile/...
+```
+
+Для клиентов, использующих Gateway, переключение специализированного ядра
+происходит без ожидания рестарта canonical-процесса. При прямом подключении к
+legacy-портам `8701–8705` короткий рестарт по-прежнему виден. Main Core `8700`
+и Web UI `8710` пока также не имеют полного Blue/Green fronting.
 
 Подробности: `docs/PLATFORM_V03.md`.
