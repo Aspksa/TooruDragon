@@ -41,3 +41,19 @@ CREATE TABLE IF NOT EXISTS work_items (
     payload_json TEXT,
     created_at TEXT NOT NULL
 );
+
+
+CREATE TABLE IF NOT EXISTS core_actions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    core_name TEXT NOT NULL,
+    action TEXT NOT NULL,
+    ok INTEGER NOT NULL,
+    message TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_core_actions_created_at
+ON core_actions(created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_core_actions_core_name
+ON core_actions(core_name);
