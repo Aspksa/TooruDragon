@@ -5,6 +5,7 @@ data/*.db-shm
 data/*.db-wal
 logs/
 runtime/
+backups/
 .env
 .venv/
 venv/
