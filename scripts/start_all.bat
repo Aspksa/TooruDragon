@@ -1,64 +1,84 @@
 @echo off
 setlocal EnableExtensions
-chcp 65001 >nul
+cd /d "%~dp0\.."
+
 set "PYTHONUTF8=1"
 set "PYTHONIOENCODING=utf-8"
-cd /d "%~dp0\.."
 set "PYTHON_EXE=%TOORUDRAGON_PYTHON%"
-if not defined PYTHON_EXE set "PYTHON_EXE=python"
+if not defined PYTHON_EXE (
+    if exist "runtime\python\python.exe" (
+        set "PYTHON_EXE=runtime\python\python.exe"
+    ) else (
+        set "PYTHON_EXE=python"
+    )
+)
+
 "%PYTHON_EXE%" -c "import sys; print(sys.version)" >nul 2>nul
 if errorlevel 1 (
-    echo [ОШИБКА] Python недоступен.
+    echo [ERROR] Python is unavailable.
     exit /b 1
 )
-echo.
-echo [БАЗА] Инициализация общей базы данных...
+
+echo [DB] Initializing database...
 "%PYTHON_EXE%" "scripts\init_db.py"
 if errorlevel 1 exit /b 2
+
 "%PYTHON_EXE%" "scripts\desired_state.py" running --all
 if errorlevel 1 exit /b 21
-echo [GATEWAY] Проверка локального traffic gateway...
+
+echo [GATEWAY] Checking local gateway...
 "%PYTHON_EXE%" -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8698/health', timeout=0.5).read()" >nul 2>nul
-if errorlevel 1 start "TooruDragon - Gateway" "%PYTHON_EXE%" "gateway\app.py"
-echo [SUPERVISOR] Проверка внешнего Control Plane...
+if errorlevel 1 start "TooruDragon - Gateway" /min "%PYTHON_EXE%" "gateway\app.py"
+
+echo [SUPERVISOR] Checking external supervisor...
 "%PYTHON_EXE%" -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8699/health', timeout=0.5).read()" >nul 2>nul
-if errorlevel 1 start "TooruDragon - Supervisor" "%PYTHON_EXE%" "supervisor\app.py"
-echo [ЯДРО] Запуск Tooru/AI...
-start "TooruDragon - Tooru AI" cmd /k "chcp 65001>nul && set PYTHONUTF8=1 && set PYTHONIOENCODING=utf-8 && "core\tooru_ai\start.bat""
-echo [ЯДРО] Запуск Лаборатории Tooru/AI...
-start "TooruDragon - Лаборатория" cmd /k "chcp 65001>nul && set PYTHONUTF8=1 && set PYTHONIOENCODING=utf-8 && "core\workshop\start.bat""
-echo [ЯДРО] Запуск Домашнего ядра...
-start "TooruDragon - Дом" cmd /k "chcp 65001>nul && set PYTHONUTF8=1 && set PYTHONIOENCODING=utf-8 && "core\home\start.bat""
-echo [ЯДРО] Запуск Рабочего ядра...
-start "TooruDragon - Работа" cmd /k "chcp 65001>nul && set PYTHONUTF8=1 && set PYTHONIOENCODING=utf-8 && "core\work\start.bat""
-echo [ЯДРО] Запуск Мобильного ядра...
-start "TooruDragon - Mobile" cmd /k "chcp 65001>nul && set PYTHONUTF8=1 && set PYTHONIOENCODING=utf-8 && "core\mobile\start.bat""
+if errorlevel 1 start "TooruDragon - Supervisor" /min "%PYTHON_EXE%" "supervisor\app.py"
+
+echo [CORE] Starting Tooru AI...
+start "TooruDragon - Tooru AI" /min "%PYTHON_EXE%" "core\tooru_ai\app.py"
+
+echo [CORE] Starting Laboratory...
+start "TooruDragon - Laboratory" /min "%PYTHON_EXE%" "core\workshop\app.py"
+
+echo [CORE] Starting Home...
+start "TooruDragon - Home" /min "%PYTHON_EXE%" "core\home\app.py"
+
+echo [CORE] Starting Work...
+start "TooruDragon - Work" /min "%PYTHON_EXE%" "core\work\app.py"
+
+echo [CORE] Starting Mobile...
+start "TooruDragon - Mobile" /min "%PYTHON_EXE%" "core\mobile\app.py"
+
 timeout /t 2 /nobreak >nul
-echo [ЯДРО] Запуск Главного ядра...
-start "TooruDragon - Главное ядро" cmd /k "chcp 65001>nul && set PYTHONUTF8=1 && set PYTHONIOENCODING=utf-8 && "core\main\start.bat""
-echo [WEB] Запуск русского Web UI...
-start "TooruDragon - Web" cmd /k "chcp 65001>nul && set PYTHONUTF8=1 && set PYTHONIOENCODING=utf-8 && "web\start.bat""
+
+echo [CORE] Starting Main...
+start "TooruDragon - Main" /min "%PYTHON_EXE%" "core\main\app.py"
+
+echo [WEB] Starting Web Control Center...
+start "TooruDragon - Web" /min "%PYTHON_EXE%" "web\server.py"
+
 timeout /t 3 /nobreak >nul
-echo.
-echo [ПРОВЕРКА] Проверяю состояние всех ядер...
+
+echo [CHECK] Verifying services...
 "%PYTHON_EXE%" "scripts\check_health.py"
 if errorlevel 1 (
-    echo [ПРЕДУПРЕЖДЕНИЕ] Не все ядра подтвердили готовность.
-    echo [ROLLBACK] Проверяю последнее обновление...
+    echo [WARN] Not all services reported healthy.
+    echo [ROLLBACK] Checking pending update...
     "%PYTHON_EXE%" "scripts\finalize_update.py" --rollback
     exit /b 3
 )
+
 "%PYTHON_EXE%" "scripts\finalize_update.py" --success >nul 2>nul
+
 echo.
-echo [ГОТОВО] Все ядра отвечают.
-echo [АДРЕС] Gateway:       http://127.0.0.1:8698/health
-echo [АДРЕС] Supervisor:    http://127.0.0.1:8699/status
-echo [АДРЕС] Главное ядро:  http://127.0.0.1:8700
-echo [АДРЕС] Service Registry: http://127.0.0.1:8700/registry
-echo [АДРЕС] Tooru/AI:       http://127.0.0.1:8701
-echo [АДРЕС] Лаборатория:    http://127.0.0.1:8702
-echo [АДРЕС] Дом:            http://127.0.0.1:8703
-echo [АДРЕС] Работа:         http://127.0.0.1:8704
-echo [АДРЕС] Mobile:         http://127.0.0.1:8705
-echo [АДРЕС] Web UI:         http://127.0.0.1:8710
+echo [OK] TooruDragon is running.
+echo [URL] Gateway:          http://127.0.0.1:8698/health
+echo [URL] Supervisor:       http://127.0.0.1:8699/status
+echo [URL] Main:             http://127.0.0.1:8700
+echo [URL] Tooru AI:         http://127.0.0.1:8701
+echo [URL] Laboratory:       http://127.0.0.1:8702
+echo [URL] Home:             http://127.0.0.1:8703
+echo [URL] Work:             http://127.0.0.1:8704
+echo [URL] Mobile:           http://127.0.0.1:8705
+echo [URL] Web:              http://127.0.0.1:8710
 exit /b 0
