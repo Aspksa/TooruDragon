@@ -165,28 +165,66 @@ Current telemetry includes:
 HTTP responses also expose `X-Request-Id`, and request payloads receive the same
 correlation identifier.
 
-## Blue/Green foundation
+## Blue/Green Gateway
 
-`DeploymentCoordinator` can launch a candidate copy of a core on an isolated
-temporary port using `TOORUDRAGON_PORT_OVERRIDE`.
+v0.3 includes a local traffic Gateway at `127.0.0.1:8698`.
 
-Candidate instances are explicitly prevented from registering themselves as the
-live production service.
+Gateway routes requests through:
 
-Implemented:
+```text
+/core/<core>/<path>
+```
 
-- candidate staging;
-- isolated port override;
-- candidate health probing;
-- registry isolation.
+Example:
 
-Not yet claimed as complete zero-downtime deployment:
+```text
+http://127.0.0.1:8698/core/tooru_ai/health
+```
 
-- no production traffic router/switch exists yet;
-- promotion and draining are not faked.
+`DeploymentCoordinator` can launch a candidate copy of a specialized core on
+an isolated temporary port using `TOORUDRAGON_PORT_OVERRIDE`. Candidate
+instances are prevented from registering themselves as the production service.
 
-The next step for true Blue/Green is a stable local gateway that owns canonical
-ports while core instances bind internal dynamic ports.
+Supervisor owns the deployment lifecycle:
+
+- `POST /deployment/promote` — stage, probe and atomically switch Gateway route;
+- `POST /deployment/rollback` — restore previous route and terminate candidate;
+- `POST /deployment/complete` — verify canonical instance, switch back and terminate candidate;
+- `GET /deployments` — inspect active deployments.
+
+Active deployment metadata is durable in SQLite. If Supervisor restarts, it
+reconstructs active deployment state. If Gateway restarts, Supervisor re-syncs
+active candidate routes. If a restored candidate is unhealthy, the previous
+route is restored.
+
+Rolling Update uses this flow for specialized cores:
+
+```text
+candidate starts on :970x
+        ↓
+candidate health-check
+        ↓
+Gateway route → candidate
+        ↓
+canonical :870x restarts
+        ↓
+canonical health-check
+        ↓
+Gateway route → canonical
+        ↓
+candidate terminates
+```
+
+This provides near-zero switchover for clients that use the Gateway route.
+It does **not** claim universal zero downtime yet:
+
+- clients that connect directly to legacy ports `8701–8705` still observe the
+  canonical process restart;
+- Main Core `8700` is not fronted by this Gateway deployment flow;
+- Web UI `8710` still restarts directly when changed.
+
+The architecture therefore has a real traffic switch without hiding these
+remaining compatibility boundaries.
 
 ## Launcher integration
 
