@@ -128,14 +128,11 @@ class UpdateManager:
             )
 
         previous_head = self._head()
-        backup = self.backups.create(reason=f"before-update:{previous_head}")
-        self.backups.prune(keep=10)
 
         fetch = self._run("git", "fetch", remote, branch)
         if fetch.returncode != 0:
             return UpdateResult(
                 ok=False,
-                backup_path=str(backup),
                 previous_head=previous_head,
                 message=f"git fetch завершился ошибкой: {fetch.stderr.strip()}",
             )
@@ -146,11 +143,13 @@ class UpdateManager:
             return UpdateResult(
                 ok=True,
                 changed=False,
-                backup_path=str(backup),
                 previous_head=previous_head,
                 current_head=previous_head,
                 message="Обновлений нет.",
             )
+
+        backup = self.backups.create(reason=f"before-update:{previous_head}")
+        self.backups.prune(keep=10)
 
         pull = self._run("git", "pull", "--ff-only", remote, branch)
         if pull.returncode != 0:
