@@ -4,8 +4,9 @@
   "cores": {
     "main": 8700,
     "tooru_ai": 8701,
-    "workshop": 8702,
+    "laboratory": 8702,
     "home": 8703,
-    "work": 8704
+    "work": 8704,
+    "mobile": 8705
   }
 }
