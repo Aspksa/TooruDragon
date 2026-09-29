@@ -22,6 +22,9 @@ if($LASTEXITCODE -ne 0){exit 20}
 & $python "scripts\desired_state.py" running --all
 if($LASTEXITCODE -ne 0){exit 21}
 
+if(-not(Port-Up 8698)){
+    Start-Process -FilePath $python -ArgumentList ("`"{0}`"" -f (Join-Path $Root "gateway\app.py")) -WorkingDirectory $Root -WindowStyle Hidden
+}
 if(-not(Port-Up 8699)){
     Start-Process -FilePath $python -ArgumentList ("`"{0}`"" -f (Join-Path $Root "supervisor\app.py")) -WorkingDirectory $Root -WindowStyle Hidden
 }
