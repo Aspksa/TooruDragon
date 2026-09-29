@@ -241,7 +241,7 @@ $splash.Controls.Add($progress)
 $splash.Show();[Windows.Forms.Application]::DoEvents();Start-Sleep -Milliseconds 650
 
 $form=New-Object Windows.Forms.Form
-$form.Text="TooruDragon Launcher v0.3.0-alpha"
+$form.Text="TooruDragon Launcher v0.3.0"
 $form.Size=New-Object Drawing.Size(1420,900)
 $form.MinimumSize=New-Object Drawing.Size(1200,760)
 $form.StartPosition="CenterScreen"
@@ -253,7 +253,7 @@ $side=P 0 0 230 900 ([Drawing.Color]::FromArgb(8,10,20))
 $side.Dock=[Windows.Forms.DockStyle]::Left
 $form.Controls.Add($side)
 $side.Controls.Add((L "🐉 TooruDragon" 18 20 200 38 18 $text ([Drawing.FontStyle]::Bold)))
-$side.Controls.Add((L "Launcher  •  v0.3.0-alpha" 22 58 190 24 9 $muted))
+$side.Controls.Add((L "Launcher  •  v0.3.0" 22 58 190 24 9 $muted))
 
 $host=P 230 0 1170 860 $bg
 $host.Dock=[Windows.Forms.DockStyle]::Fill
@@ -366,7 +366,7 @@ foreach($c in $cores){
     $nm.TextAlign=[Drawing.ContentAlignment]::MiddleCenter
     $card.Controls.Add($nm)
 
-    $vl=L ("v0.1.0  •  :{0}" -f $c.Port) 5 105 160 25 8.5 $muted
+    $vl=L ("v0.3.0  •  :{0}" -f $c.Port) 5 105 160 25 8.5 $muted
     $vl.TextAlign=[Drawing.ContentAlignment]::MiddleCenter
     $card.Controls.Add($vl)
     $versionLabels[$c.Key]=$vl
@@ -415,7 +415,7 @@ foreach($c in $cores){
     $row=P 24 $y 1080 82 $panel
     $row.Controls.Add((L $c.Icon 16 16 45 45 20 $c.Color ([Drawing.FontStyle]::Bold)))
     $row.Controls.Add((L $c.Name 75 11 300 30 12 $text ([Drawing.FontStyle]::Bold)))
-    $row.Controls.Add((L ("127.0.0.1:{0}  •  v0.1.0" -f $c.Port) 75 43 320 25 9 $muted))
+    $row.Controls.Add((L ("127.0.0.1:{0}  •  v0.3.0" -f $c.Port) 75 43 320 25 9 $muted))
     $st=B "▶ Запустить" 675 19 125 44 $green
     $sp=B "■ Остановить" 810 19 125 44 $red
     $op=B "◎ Открыть" 945 19 120 44 $c.Color
