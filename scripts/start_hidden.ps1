@@ -11,26 +11,31 @@ function Find-Python{
     try{$x=& py -3 -c "import sys;print(sys.executable)" 2>$null;if($LASTEXITCODE -eq 0){return $x.Trim()}}catch{}
     return $null
 }
+function Port-Up([int]$port){
+    try{Invoke-RestMethod -Uri ("http://127.0.0.1:{0}/health" -f $port) -TimeoutSec 1|Out-Null;return $true}catch{return $false}
+}
 
 $python=Find-Python
 if(-not $python){exit 10}
-
 & $python "scripts\init_db.py"
 if($LASTEXITCODE -ne 0){exit 20}
 
 $services=@(
-    "core\tooru_ai\app.py",
-    "core\workshop\app.py",
-    "core\home\app.py",
-    "core\work\app.py",
-    "core\mobile\app.py"
+    @{Port=8701;Path="core\tooru_ai\app.py"},
+    @{Port=8702;Path="core\workshop\app.py"},
+    @{Port=8703;Path="core\home\app.py"},
+    @{Port=8704;Path="core\work\app.py"},
+    @{Port=8705;Path="core\mobile\app.py"}
 )
 foreach($service in $services){
-    Start-Process -FilePath $python -ArgumentList ("`"{0}`"" -f (Join-Path $Root $service)) -WorkingDirectory $Root -WindowStyle Hidden
+    if(-not(Port-Up $service.Port)){
+        Start-Process -FilePath $python -ArgumentList ("`"{0}`"" -f (Join-Path $Root $service.Path)) -WorkingDirectory $Root -WindowStyle Hidden
+    }
 }
 Start-Sleep -Milliseconds 1200
-Start-Process -FilePath $python -ArgumentList ("`"{0}`"" -f (Join-Path $Root "core\main\app.py")) -WorkingDirectory $Root -WindowStyle Hidden
-Start-Process -FilePath $python -ArgumentList ("`"{0}`"" -f (Join-Path $Root "web\server.py")) -WorkingDirectory $Root -WindowStyle Hidden
+if(-not(Port-Up 8700)){Start-Process -FilePath $python -ArgumentList ("`"{0}`"" -f (Join-Path $Root "core\main\app.py")) -WorkingDirectory $Root -WindowStyle Hidden}
+try{$web=Get-NetTCPConnection -LocalPort 8710 -State Listen -ErrorAction SilentlyContinue}catch{$web=$null}
+if(-not $web){Start-Process -FilePath $python -ArgumentList ("`"{0}`"" -f (Join-Path $Root "web\server.py")) -WorkingDirectory $Root -WindowStyle Hidden}
 Start-Sleep -Seconds 2
 & $python "scripts\check_health.py"
 exit $LASTEXITCODE
