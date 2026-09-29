@@ -1,4 +1,4 @@
-# TooruDragon v0.1.0 Alpha
+# TooruDragon v0.2.0 Alpha
 
 Дата старта: **29 сентября 2026**
 
@@ -15,7 +15,7 @@ TooruDragon — модульная AI-система с единым систе�
 - **Рабочее ядро** — `127.0.0.1:8704` — **v0.1.0**
 - **Мобильное ядро** — `127.0.0.1:8705` — **v0.1.0**
 
-Системная версия проекта остаётся **v0.1.0 Alpha**, а версии самих ядер теперь отображаются просто как **v0.1.0** и хранятся централизованно в `config/cores.json`.
+Системная платформа проекта — **v0.2.0 Alpha**, а версии самих ядер теперь отображаются просто как **v0.1.0** и хранятся централизованно в `config/cores.json`.
 
 ## System Layer
 
@@ -97,7 +97,7 @@ TooruDragon — модульная AI-система с единым систе�
 
 ## Статус
 
-**Alpha / v0.1.0**
+**Alpha / v0.2.0**
 
 
 ## 🐉 Русский переносной лаунчер
@@ -356,3 +356,33 @@ Watchdog использует тот же Core Manager для автоматич
 `core.manager.action`.
 
 Подробности: `docs/CORE_MANAGER.md`.
+
+
+## 🧠 Core Platform v0.2
+
+TooruDragon получил новый фундамент Control Plane без ломки существующих ядер:
+
+- **Supervisor boundary** — стабильный интерфейс между управляющим процессом и Main Core;
+- **Contract Layer v1** — языконезависимые JSON Schema + traceable envelope;
+- **Durable Workflow Engine** — SQLite-задачи с lease, heartbeat, retry, idempotency и transition audit;
+- **Policy Engine** — модель capabilities с default-deny;
+- **SecretStore** — секреты через заменяемые providers без хранения plaintext в БД/config;
+- **Safe Update quality gate** — compile + unit tests перед rolling apply.
+
+Новые API:
+
+- `GET /platform`
+- `GET /api/tasks`
+- `POST /api/task/create`
+- `POST /api/task/claim`
+- `POST /api/task/update`
+- `GET /api/task/transitions?task_id=...`
+
+Контракты:
+
+- `contracts/envelope.v1.schema.json`
+- `contracts/task.v1.schema.json`
+
+Подробная архитектура: `docs/PLATFORM_V02.md`.
+
+Важно: текущий Supervisor пока **embedded abstraction** внутри Python-платформы. Это намеренный migration seam для будущего отдельного Rust/Windows Service/Linux daemon, а не фиктивное заявление о уже существующем внешнем supervisor.
