@@ -16,6 +16,8 @@ from core.system import CoreRuntime, Route
 from core.system.compatibility import CompatibilityManager
 from core.system.core_manager import CoreManager
 from core.system.event_bus import EventBus
+from core.system.agent_runtime import AgentRuntime, ToolRouter
+from core.system.observability import Observability
 from core.system.policy import PolicyEngine
 from core.system.secrets import SecretStore
 from core.system.supervisor import SupervisorFacade
@@ -48,7 +50,8 @@ CORES = {
 }
 
 event_bus = EventBus(
-    max_events=int(runtime.config.get("event_bus", {}).get("max_events", 500))
+    max_events=int(runtime.config.get("event_fabric", {}).get("retention", 10000)),
+    database=runtime.db,
 )
 
 compatibility_manager = CompatibilityManager(runtime.cores)
@@ -60,7 +63,12 @@ core_manager = CoreManager(
 workflow_engine = WorkflowEngine(runtime.db)
 policy_engine = PolicyEngine(runtime.config.get("policy", {}))
 secret_store = SecretStore()
-supervisor = SupervisorFacade(architecture_version="0.2")
+supervisor = SupervisorFacade(architecture_version="0.3")
+observability = Observability(
+    max_samples=int(runtime.config.get("observability", {}).get("max_samples", 300))
+)
+tool_router = ToolRouter(policy_engine)
+agent_runtime = AgentRuntime(workflow_engine, policy_engine, tool_router)
 
 registry_config = runtime.config.get("service_registry", {})
 service_registry = ServiceRegistry(
@@ -93,6 +101,8 @@ def main_registry_heartbeat() -> None:
 register_main_service()
 
 watchdog_config = runtime.config.get("watchdog", {})
+supervisor_config = runtime.config.get("supervisor", {})
+external_supervisor_enabled = bool(supervisor_config.get("enabled", True))
 watchdog = Watchdog(
     host=runtime.config_host,
     cores=runtime.cores,
@@ -100,7 +110,7 @@ watchdog = Watchdog(
     logger=runtime.logger,
     interval_seconds=int(watchdog_config.get("interval_seconds", 10)),
     failure_threshold=int(watchdog_config.get("failure_threshold", 3)),
-    auto_restart=bool(watchdog_config.get("auto_restart", True)),
+    auto_restart=(bool(watchdog_config.get("auto_restart", True)) and not external_supervisor_enabled),
     restart_callback=core_manager.restart,
 )
 
@@ -153,6 +163,11 @@ def routes(_request):
             "/api/task/claim": "Захватить задачу worker-ом",
             "/api/task/update": "Обновить состояние задачи",
             "/api/task/transitions": "История переходов задачи",
+            "/events/replay": "Replay durable events",
+            "/events/ack": "Подтверждение durable event offset",
+            "/events/dlq": "Перенос события в dead-letter queue",
+            "/observability": "Метрики и runtime telemetry",
+            "/agents/plan": "Capability-gated agent plan submission",
         },
     }
 
@@ -185,6 +200,87 @@ def publish_event(request):
     event = event_bus.publish(topic, source, event_payload)
     runtime.logger.info("Event published: %s from %s", topic, source)
     return 201, {"event": event}
+
+
+
+def event_replay(request):
+    consumer = str(request.query.get("consumer", [""])[0]).strip()
+    topic = request.query.get("topic", [None])[0]
+    raw_limit = request.query.get("limit", ["100"])[0]
+    if not consumer:
+        return 400, {"error": "consumer_required"}
+    try:
+        items = event_bus.replay(
+            consumer,
+            topic=topic,
+            limit=int(raw_limit),
+        )
+    except (ValueError, TypeError) as exc:
+        return 400, {"error": "invalid_replay", "message": str(exc)}
+    return 200, {"consumer": consumer, "events": items}
+
+
+def event_ack(request):
+    payload = request.json if isinstance(request.json, dict) else {}
+    consumer = str(payload.get("consumer", "")).strip()
+    if not consumer:
+        return 400, {"error": "consumer_required"}
+    try:
+        event_bus.ack(consumer, int(payload.get("sequence")))
+    except (ValueError, TypeError) as exc:
+        return 400, {"error": "invalid_ack", "message": str(exc)}
+    return 200, {"consumer": consumer, "acked": int(payload["sequence"])}
+
+
+def event_dlq(request):
+    payload = request.json if isinstance(request.json, dict) else {}
+    event_id = str(payload.get("event_id", "")).strip()
+    consumer = str(payload.get("consumer", "")).strip()
+    error = str(payload.get("error", "processing_failed"))
+    if not event_id or not consumer:
+        return 400, {"error": "event_id_and_consumer_required"}
+    try:
+        event = event_bus.dead_letter(event_id, consumer, error)
+    except KeyError:
+        return 404, {"error": "event_not_found"}
+    return 201, {"dead_lettered": event}
+
+
+def observability_status(_request):
+    return 200, {
+        "service": "main",
+        "observability": observability.snapshot(),
+        "event_fabric": event_bus.stats(),
+    }
+
+
+def agent_plan(request):
+    payload = request.json if isinstance(request.json, dict) else {}
+    agent_id = str(payload.get("agent_id", "")).strip()
+    steps = payload.get("steps", [])
+    if not isinstance(steps, list):
+        return 400, {"error": "steps_must_be_array"}
+    try:
+        plan = agent_runtime.submit_plan(
+            agent_id=agent_id,
+            steps=steps,
+            trace_id=payload.get("trace_id"),
+        )
+    except (ValueError, TypeError, PermissionError) as exc:
+        return 403 if isinstance(exc, PermissionError) else 400, {
+            "error": "agent_plan_rejected",
+            "message": str(exc),
+        }
+    event_bus.publish(
+        "agent.plan.created",
+        agent_id,
+        {
+            "workflow_id": plan["workflow_id"],
+            "task_count": len(plan["tasks"]),
+        },
+        trace_id=plan["trace_id"],
+    )
+    return 201, {"plan": plan}
 
 
 def watchdog_status(_request):
@@ -303,6 +399,12 @@ def platform_status(_request):
         "workflow": {
             "durable": True,
             "lease_based": True,
+        },
+        "event_fabric": event_bus.stats(),
+        "external_supervisor": {
+            "enabled": external_supervisor_enabled,
+            "host": supervisor_config.get("host", "127.0.0.1"),
+            "port": supervisor_config.get("port", 8699),
         },
     }
 
@@ -509,6 +611,11 @@ if __name__ == "__main__":
         "/api/task/claim": Route(task_claim, method="POST", protected=True),
         "/api/task/update": Route(task_update, method="POST", protected=True),
         "/api/task/transitions": Route(task_transitions, protected=True),
+        "/events/replay": Route(event_replay, protected=True),
+        "/events/ack": Route(event_ack, method="POST", protected=True),
+        "/events/dlq": Route(event_dlq, method="POST", protected=True),
+        "/observability": Route(observability_status, protected=True),
+        "/agents/plan": Route(agent_plan, method="POST", protected=True),
     }
 
     for core_name in runtime.cores:
