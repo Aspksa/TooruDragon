@@ -99,13 +99,18 @@ if(-not $failed){
 
 if(-not $failed){
     Start-Sleep -Seconds 2
-    & $Python "scripts\check_health.py"
-    if($LASTEXITCODE -eq 0){
+    foreach($s in $services){
+        if($running[$s.Key] -and -not(Health $s.Port)){
+            Write-Host ("[ERROR] После обновления не отвечает ранее работавший сервис: {0}" -f $s.Name) -ForegroundColor Red
+            $failed=$true
+            break
+        }
+    }
+    if(-not $failed){
         & $Python "scripts\finalize_update.py" --success
-        Write-Host "[UPDATE] Rolling update завершён успешно." -ForegroundColor Green
+        Write-Host "[UPDATE] Rolling update завершён успешно. Состояние сервисов сохранено." -ForegroundColor Green
         exit 0
     }
-    $failed=$true
 }
 
 Write-Host "[ROLLBACK] Новая версия не прошла проверку. Возвращаю предыдущую." -ForegroundColor Yellow
@@ -119,7 +124,10 @@ Start-Sleep -Milliseconds 1200
 if($running["main"]){Start-Service "core\main\app.py"}
 if($webRunning){Start-Service "web\server.py"}
 Start-Sleep -Seconds 2
-& $Python "scripts\check_health.py"
-if($LASTEXITCODE -eq 0){Write-Host "[ROLLBACK] Предыдущая версия восстановлена и работает." -ForegroundColor Green;exit 40}
-Write-Host "[CRITICAL] Rollback выполнен, но health-check всё ещё не проходит." -ForegroundColor Red
+$rollbackOk=$true
+foreach($s in $services){
+    if($running[$s.Key] -and -not(Health $s.Port)){$rollbackOk=$false;break}
+}
+if($rollbackOk){Write-Host "[ROLLBACK] Предыдущая версия восстановлена, прежнее состояние сервисов возвращено." -ForegroundColor Green;exit 40}
+Write-Host "[CRITICAL] Rollback выполнен, но один из ранее работавших сервисов не поднялся." -ForegroundColor Red
 exit 41
