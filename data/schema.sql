@@ -182,3 +182,26 @@ CREATE TABLE IF NOT EXISTS ai_memory_items (
 
 CREATE INDEX IF NOT EXISTS idx_ai_memory_scope_created
 ON ai_memory_items(scope, created_at DESC);
+
+
+CREATE TABLE IF NOT EXISTS ai_documents (
+    id TEXT PRIMARY KEY,
+    title TEXT,
+    source TEXT NOT NULL,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS ai_document_chunks (
+    id TEXT PRIMARY KEY,
+    document_id TEXT NOT NULL,
+    chunk_index INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(document_id) REFERENCES ai_documents(id) ON DELETE CASCADE,
+    UNIQUE(document_id, chunk_index)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_document_chunks_document
+ON ai_document_chunks(document_id, chunk_index);
