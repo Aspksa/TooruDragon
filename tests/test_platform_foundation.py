@@ -13,6 +13,7 @@ from core.system.database import Database
 from core.system.event_fabric import EventFabric
 from core.system.observability import Observability
 from core.system.policy import PolicyEngine
+from core.system.rag import RAGIndex
 from core.system.workflow import WorkflowEngine
 
 
@@ -338,6 +339,46 @@ class AIRuntimeTests(unittest.TestCase):
             )
         )
 
+    def test_rag_ingest_search_and_prompt_injection(self):
+        rag = RAGIndex(
+            self.db,
+            chunk_size=220,
+            chunk_overlap=30,
+        )
+        document = rag.ingest(
+            (
+                "Gateway routes production traffic between canonical and green candidates. "
+                "Supervisor can restore active routes after restart. "
+            ) * 8,
+            title="Blue Green Notes",
+            source="test",
+        )
+        self.assertGreater(document["chunk_count"], 1)
+
+        found = rag.search("restore gateway candidate routes", limit=5)
+        self.assertTrue(found)
+        self.assertEqual(found[0]["document_id"], document["id"])
+
+        router = FakeModelRouter()
+        runtime = ChatRuntime(
+            router,
+            self.memory,
+            ChatConfig(
+                system_prompt="system",
+                rag_limit=5,
+            ),
+            rag=rag,
+        )
+        result = runtime.chat("How are candidate routes restored?")
+        self.assertTrue(result["retrieved_rag"])
+        self.assertTrue(
+            any(
+                "Retrieved document context" in item["content"]
+                for item in router.last_messages
+                if item["role"] == "system"
+            )
+        )
+
     def test_disabled_provider_does_not_persist_exchange(self):
         router = ModelRouter({
             "default_provider": "local",
@@ -359,11 +400,7 @@ class AIRuntimeTests(unittest.TestCase):
             runtime.chat("hello")
 
         conversations = self.memory.conversations()
-        self.assertEqual(len(conversations), 1)
-        self.assertEqual(
-            self.memory.history(conversations[0]["id"], limit=10),
-            [],
-        )
+        self.assertEqual(conversations, [])
 
 
 
