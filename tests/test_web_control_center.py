@@ -10,6 +10,7 @@ class WebControlCenterProxyTests(unittest.TestCase):
         self.assertTrue(_allowed("GET", "main", "/api/cores"))
         self.assertTrue(_allowed("GET", "main", "/api/tasks?limit=100"))
         self.assertTrue(_allowed("GET", "main", "/observability"))
+        self.assertTrue(_allowed("GET", "main", "/api/task/transitions?task_id=abc"))
 
     def test_control_actions_are_explicitly_allowlisted(self):
         self.assertTrue(_allowed("POST", "supervisor", "/core/action"))
