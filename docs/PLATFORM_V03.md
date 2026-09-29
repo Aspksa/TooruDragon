@@ -1,7 +1,7 @@
 # TooruDragon Core Platform v0.3
 
 v0.3 moves TooruDragon from an in-process orchestration model toward a real
-Control Plane / Intelligence Plane split while preserving the current Alpha
+Control Plane / Intelligence Plane split while preserving the current
 cores and local-first deployment model.
 
 ## Architecture
