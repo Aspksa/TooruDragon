@@ -1,3 +1,6 @@
+from .ai_memory import AIMemoryStore
+from .chat_runtime import ChatConfig, ChatRuntime
+from .model_router import ModelProviderError, ModelRouter
 from .agent_runtime import AgentRuntime, Planner, Tool, ToolRouter
 from .contracts import Envelope, PROTOCOL_VERSION, validate_envelope
 from .core_manager import CoreManager
@@ -13,6 +16,11 @@ from .workflow import WorkflowEngine
 
 __all__ = [
     "AgentRuntime",
+    "ModelRouter",
+    "ModelProviderError",
+    "ChatRuntime",
+    "ChatConfig",
+    "AIMemoryStore",
     "Candidate",
     "CoreManager",
     "CoreRuntime",
