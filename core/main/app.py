@@ -40,6 +40,7 @@ MAIN_CAPABILITIES = [
     "observability",
     "agent_runtime",
     "tool_router",
+    "blue_green_gateway",
 ]
 
 runtime = CoreRuntime(
@@ -48,8 +49,18 @@ runtime = CoreRuntime(
     capabilities=MAIN_CAPABILITIES,
 )
 
+gateway_config = runtime.config.get("gateway", {})
+gateway_enabled = bool(gateway_config.get("enabled", False))
+gateway_probe_enabled = bool(gateway_config.get("use_for_main_probes", False))
+gateway_host = str(gateway_config.get("host", "127.0.0.1"))
+gateway_port = int(gateway_config.get("port", 8698))
+
 CORES = {
-    name: f"http://{runtime.config_host}:{entry['port'] if isinstance(entry, dict) else entry}/health"
+    name: (
+        f"http://{gateway_host}:{gateway_port}/core/{name}/health"
+        if gateway_enabled and gateway_probe_enabled
+        else f"http://{runtime.config_host}:{entry['port'] if isinstance(entry, dict) else entry}/health"
+    )
     for name, entry in runtime.cores.items()
     if name != "main"
 }
@@ -475,6 +486,12 @@ def platform_status(_request):
             "enabled": external_supervisor_enabled,
             "host": supervisor_config.get("host", "127.0.0.1"),
             "port": supervisor_config.get("port", 8699),
+        },
+        "gateway": {
+            "enabled": gateway_enabled,
+            "host": gateway_host,
+            "port": gateway_port,
+            "main_probes_through_gateway": gateway_probe_enabled,
         },
     }
 
