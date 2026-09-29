@@ -118,7 +118,7 @@ function Update-System{
     if(-not(Get-Command git -ErrorAction SilentlyContinue)){Notify "Обновление" "Git не найден. Автообновление недоступно.";return}
     $script=Join-Path $Root "scripts\update.py"
     Start-Process -FilePath "cmd.exe" -ArgumentList @("/k","`"$py`" `"$script`"") -WorkingDirectory $Root
-    Notify "Безопасное обновление" "Создаётся backup и проверяется обновление. После успеха перезапустите систему."
+    Notify "Rolling Update" "Создаётся backup. Затронутые сервисы обновятся по очереди и автоматически вернутся в работу."
 }
 
 function Find-Python{
