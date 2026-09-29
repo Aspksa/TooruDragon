@@ -139,7 +139,29 @@
     </section>
 
     <section class="page" data-page="agent">
-      <div class="two-col">
+      <div class="card panel ai-chat-panel">
+        <div class="section-head">
+          <h3>Tooru/AI Chat Runtime</h3>
+          <div class="actions">
+            <select id="ai-provider" class="compact-select"></select>
+            <input id="ai-model" class="compact-input" placeholder="model override">
+            <select id="ai-conversation" class="compact-select"></select>
+          </div>
+        </div>
+        <div class="chat-status" id="ai-runtime-status">Проверяю Model Router...</div>
+        <div class="chat-thread" id="ai-chat-thread"></div>
+        <div class="chat-compose">
+          <textarea id="ai-chat-input" placeholder="Сообщение для Tooru/AI"></textarea>
+          <button class="btn primary" id="ai-chat-send">Отправить</button>
+        </div>
+        <div class="memory-row">
+          <input id="ai-memory-input" class="compact-input" placeholder="Сохранить факт в retrieval memory">
+          <button class="btn" id="ai-memory-save">Запомнить</button>
+          <button class="btn" id="ai-memory-search">Найти похожее</button>
+        </div>
+        <pre class="json memory-results" id="ai-memory-results">Retrieval results появятся здесь.</pre>
+      </div>
+      <div class="section two-col">
         <div class="card panel">
           <div class="section-head"><h3>Agent Runtime</h3></div>
           <div class="field"><label>Agent ID</label><input id="agent-id" value="tooru_ai" ></div>
