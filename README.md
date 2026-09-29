@@ -236,3 +236,65 @@ GUI содержит только четыре основных раздела:
 - `CreateTooruDragonShortcut.bat` — создать ярлык.
 
 При закрытии окна Launcher не завершает TooruDragon, а сворачивается в системный tray. Полный выход выполняется через пункт **Выход** в меню tray.
+
+
+## 🛡 Безопасность Windows, Backup/Rollback и Service Registry
+
+### Windows-совместимость
+
+Launcher теперь имеет дополнительные fallback-механизмы:
+- остановка процесса по порту использует `Get-NetTCPConnection`, а на старой Windows может перейти на `netstat`;
+- автозапуск сначала использует Task Scheduler, а при недоступности его PowerShell API создаёт ярлык в системной папке Startup;
+- пути к проекту передаются в кавычках, поэтому переносимый запуск рассчитан на пробелы и кириллицу в пути;
+- локально генерируемые runtime-файлы, backups и `.ico` исключены из Git и не блокируют автообновление.
+
+### Backup / Rollback
+
+Новая схема обновления:
+
+```text
+Git update
+   ↓
+Backup SQLite + config + Git HEAD
+   ↓
+git fetch / pull --ff-only
+   ↓
+compileall + DB init
+   ↓
+запуск ядер
+   ↓
+health-check
+   ├── OK → update подтверждён
+   └── FAIL → rollback к backup
+```
+
+Резервные копии находятся локально в `backups/` и не отправляются в Git.
+
+Доступны:
+- `BackupTooruDragon.bat`;
+- `RollbackTooruDragon.bat`;
+- кнопки **Создать backup** и **Откатить последний** в GUI.
+
+Хранятся последние 10 резервных копий.
+
+### Service Registry
+
+Main Core предоставляет живой реестр:
+
+- `GET http://127.0.0.1:8700/registry`
+- `POST http://127.0.0.1:8700/registry/register`
+
+Каждое специализированное ядро автоматически отправляет heartbeat и публикует:
+- имя;
+- отображаемое имя;
+- версию;
+- host/port;
+- PID;
+- uptime;
+- роль;
+- capabilities;
+- время последнего heartbeat.
+
+Heartbeat выполняется каждые 10 секунд. После 35 секунд без heartbeat сервис получает статус `stale`.
+
+Main Core также обновляет собственный heartbeat.
