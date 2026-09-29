@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 import threading
 import time
@@ -32,6 +33,34 @@ manager = CoreManager(host=host, cores=cores, root=ROOT)
 db = Database()
 failures = {name: 0 for name in cores}
 started = time.monotonic()
+
+def start_main() -> dict:
+    current = manager.status("main")
+    if current.get("online"):
+        return {"ok": True, "already_running": True, "pid": current.get("pid")}
+
+    app = ROOT / "core" / "main" / "app.py"
+    kwargs = {
+        "cwd": ROOT,
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+    }
+    if __import__("os").name == "nt":
+        kwargs["creationflags"] = (
+            getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            | getattr(subprocess, "DETACHED_PROCESS", 0)
+        )
+    else:
+        kwargs["start_new_session"] = True
+
+    process = subprocess.Popen([sys.executable, str(app)], **kwargs)
+    for _ in range(40):
+        time.sleep(0.25)
+        if manager.status("main").get("online"):
+            return {"ok": True, "pid": process.pid}
+    return {"ok": False, "pid": process.pid, "message": "main health-check failed"}
+
 
 
 def safe_mode() -> bool:
@@ -76,11 +105,10 @@ def recovery_loop() -> None:
             continue
 
         for name in cores:
-            if name == "main":
-                continue
             if manager.desired_state(name) == "stopped":
                 failures[name] = 0
                 continue
+
             status = manager.status(name)
             if status.get("online"):
                 failures[name] = 0
@@ -94,7 +122,10 @@ def recovery_loop() -> None:
                 failure_threshold,
             )
             if failures[name] >= failure_threshold:
-                result = manager.restart(name)
+                if name == "main":
+                    result = start_main()
+                else:
+                    result = manager.restart(name)
                 logger.warning("Supervisor recovery %s: %s", name, result)
                 failures[name] = 0
 
