@@ -45,6 +45,57 @@ function Restart-Core([string]$Name,[int]$Port,[string]$Path,[bool]$WasRunning){
     return $false
 }
 
+function Supervisor-Post([string]$Path,[hashtable]$Body){
+    try{
+        $headers=@{}
+        if($env:TOORUDRAGON_API_TOKEN){$headers["Authorization"]="Bearer "+$env:TOORUDRAGON_API_TOKEN}
+        $json=$Body|ConvertTo-Json -Compress
+        return Invoke-RestMethod -Uri ("http://127.0.0.1:8699"+$Path) -Method Post -ContentType "application/json; charset=utf-8" -Headers $headers -Body $json -TimeoutSec 25
+    }catch{
+        Write-Host ("[BLUE/GREEN] Supervisor API недоступен: {0}" -f $_.Exception.Message) -ForegroundColor Yellow
+        return $null
+    }
+}
+
+function BlueGreen-Restart($Service,[bool]$WasRunning){
+    if(-not $WasRunning){
+        Write-Host ("[UPDATE] {0} был выключен — состояние сохраняю." -f $Service.Name) -ForegroundColor DarkGray
+        return $true
+    }
+
+    if((-not(Health 8698)) -or (-not(Health 8699))){
+        Write-Host ("[BLUE/GREEN] Gateway/Supervisor недоступны для {0}; использую rolling restart." -f $Service.Name) -ForegroundColor Yellow
+        return (Restart-Core $Service.Name $Service.Port $Service.Path $true)
+    }
+
+    $candidatePort=[int]$Service.Port+1000
+    if(Health $candidatePort){Stop-Port $candidatePort;Start-Sleep -Milliseconds 300}
+
+    Write-Host ("[BLUE/GREEN] Stage {0} на :{1}" -f $Service.Name,$candidatePort) -ForegroundColor Cyan
+    $promoted=Supervisor-Post "/deployment/promote" @{core=$Service.Key;port=$candidatePort}
+    if((-not $promoted) -or (-not $promoted.ok)){
+        Write-Host ("[BLUE/GREEN] Candidate не поднялся для {0}; fallback rolling." -f $Service.Name) -ForegroundColor Yellow
+        return (Restart-Core $Service.Name $Service.Port $Service.Path $true)
+    }
+
+    Write-Host ("[BLUE/GREEN] Трафик {0} переключён на candidate." -f $Service.Name) -ForegroundColor Cyan
+    $canonicalOk=Restart-Core $Service.Name $Service.Port $Service.Path $true
+    if(-not $canonicalOk){
+        [void](Supervisor-Post "/deployment/rollback" @{core=$Service.Key})
+        return $false
+    }
+
+    $completed=Supervisor-Post "/deployment/complete" @{core=$Service.Key}
+    if($completed -and $completed.ok){
+        Write-Host ("[BLUE/GREEN] {0}: canonical подтверждён, candidate завершён." -f $Service.Name) -ForegroundColor Green
+        return $true
+    }
+
+    Write-Host ("[BLUE/GREEN] Не удалось завершить promote {0}; пробую route rollback." -f $Service.Name) -ForegroundColor Yellow
+    $rolled=Supervisor-Post "/deployment/rollback" @{core=$Service.Key}
+    return [bool]($rolled -and $rolled.ok)
+}
+
 $services=@(
     @{Key="tooru_ai";Name="Tooru/AI";Port=8701;Path="core\tooru_ai\app.py";Prefix="core/tooru_ai/"},
     @{Key="laboratory";Name="Лаборатория Tooru/AI";Port=8702;Path="core\workshop\app.py";Prefix="core/workshop/"},
@@ -57,6 +108,8 @@ $services=@(
 $running=@{}
 foreach($s in $services){$running[$s.Key]=Health $s.Port}
 try{$webRunning=[bool](Get-NetTCPConnection -LocalPort 8710 -State Listen -ErrorAction SilentlyContinue)}catch{$webRunning=$false}
+$gatewayRunning=Health 8698
+$supervisorRunning=Health 8699
 
 $changedRaw=& git diff --name-only $PreviousHead $CurrentHead
 $changed=@($changedRaw | ForEach-Object {$_.Trim().Replace("\","/")} | Where-Object {$_})
@@ -75,14 +128,26 @@ foreach($s in $services){
 }
 
 $webChanged=$restartAll
+$gatewayChanged=$restartAll
+$supervisorChanged=$restartAll
 if(-not $webChanged){foreach($file in $changed){if($file.StartsWith("web/")){$webChanged=$true;break}}}
+if(-not $gatewayChanged){foreach($file in $changed){if($file.StartsWith("gateway/")){$gatewayChanged=$true;break}}}
+if(-not $supervisorChanged){foreach($file in $changed){if($file.StartsWith("supervisor/")){$supervisorChanged=$true;break}}}
 
 & $Python "scripts\init_db.py"
 if($LASTEXITCODE -ne 0){Write-Host "[ERROR] Миграция БД завершилась ошибкой." -ForegroundColor Red;& $Python "scripts\finalize_update.py" --rollback;exit 21}
 
 $failed=$false
 foreach($s in ($targets | Where-Object {$_.Key -ne "main"})){
-    if(-not(Restart-Core $s.Name $s.Port $s.Path $running[$s.Key])){$failed=$true;break}
+    if(-not(BlueGreen-Restart $s $running[$s.Key])){$failed=$true;break}
+}
+
+if((-not $failed) -and $gatewayChanged -and $gatewayRunning){
+    Write-Host "[UPDATE] Перезапуск Gateway" -ForegroundColor Cyan
+    Stop-Port 8698
+    Start-Sleep -Milliseconds 300
+    Start-Service "gateway\app.py"
+    if(-not(Wait-Up 8698 12)){$failed=$true}
 }
 
 if((-not $failed) -and $webChanged -and $webRunning){
@@ -97,6 +162,14 @@ if(-not $failed){
     if($mainTarget){if(-not(Restart-Core $mainTarget.Name $mainTarget.Port $mainTarget.Path $running["main"])){$failed=$true}}
 }
 
+if((-not $failed) -and $supervisorChanged -and $supervisorRunning){
+    Write-Host "[UPDATE] Перезапуск External Supervisor" -ForegroundColor Cyan
+    Stop-Port 8699
+    Start-Sleep -Milliseconds 300
+    Start-Service "supervisor\app.py"
+    if(-not(Wait-Up 8699 12)){$failed=$true}
+}
+
 if(-not $failed){
     Start-Sleep -Seconds 2
     foreach($s in $services){
@@ -106,6 +179,8 @@ if(-not $failed){
             break
         }
     }
+    if((-not $failed) -and $gatewayRunning -and -not(Health 8698)){$failed=$true;Write-Host "[ERROR] Gateway не отвечает после обновления." -ForegroundColor Red}
+    if((-not $failed) -and $supervisorRunning -and -not(Health 8699)){$failed=$true;Write-Host "[ERROR] Supervisor не отвечает после обновления." -ForegroundColor Red}
     if(-not $failed){
         & $Python "scripts\finalize_update.py" --success
         Write-Host "[UPDATE] Rolling update завершён успешно. Состояние сервисов сохранено." -ForegroundColor Green
@@ -114,11 +189,20 @@ if(-not $failed){
 }
 
 Write-Host "[ROLLBACK] Новая версия не прошла проверку. Возвращаю предыдущую." -ForegroundColor Yellow
+if(Health 8699){
+    foreach($s in ($services | Where-Object {$_.Key -ne "main"})){
+        [void](Supervisor-Post "/deployment/rollback" @{core=$s.Key})
+    }
+}
 foreach($s in $services){if($running[$s.Key]){Stop-Port $s.Port}}
 if($webRunning){Stop-Port 8710}
+if($supervisorRunning){Stop-Port 8699}
+if($gatewayRunning){Stop-Port 8698}
 & $Python "scripts\finalize_update.py" --rollback
 if($LASTEXITCODE -ne 0){exit 31}
 
+if($gatewayRunning){Start-Service "gateway\app.py";[void](Wait-Up 8698 12)}
+if($supervisorRunning){Start-Service "supervisor\app.py";[void](Wait-Up 8699 12)}
 foreach($s in ($services | Where-Object {$_.Key -ne "main"})){if($running[$s.Key]){Start-Service $s.Path}}
 Start-Sleep -Milliseconds 1200
 if($running["main"]){Start-Service "core\main\app.py"}
@@ -128,6 +212,8 @@ $rollbackOk=$true
 foreach($s in $services){
     if($running[$s.Key] -and -not(Health $s.Port)){$rollbackOk=$false;break}
 }
+if($rollbackOk -and $gatewayRunning -and -not(Health 8698)){$rollbackOk=$false}
+if($rollbackOk -and $supervisorRunning -and -not(Health 8699)){$rollbackOk=$false}
 if($rollbackOk){Write-Host "[ROLLBACK] Предыдущая версия восстановлена, прежнее состояние сервисов возвращено." -ForegroundColor Green;exit 40}
 Write-Host "[CRITICAL] Rollback выполнен, но один из ранее работавших сервисов не поднялся." -ForegroundColor Red
 exit 41
