@@ -21,6 +21,7 @@ class WebControlCenterProxyTests(unittest.TestCase):
         self.assertTrue(_allowed("POST", "supervisor", "/safe-mode/enable"))
         self.assertTrue(_allowed("POST", "main", "/agents/tool/invoke"))
         self.assertTrue(_allowed("POST", "tooru_ai", "/chat"))
+        self.assertTrue(_allowed("POST", "tooru_ai", "/inference"))
         self.assertTrue(_allowed("POST", "tooru_ai", "/memory/remember"))
         self.assertTrue(_allowed("POST", "tooru_ai", "/rag/ingest"))
 
