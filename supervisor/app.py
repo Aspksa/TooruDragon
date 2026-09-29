@@ -8,6 +8,8 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -27,6 +29,10 @@ cores_cfg = cores_config()
 host = cores_cfg.get("host", "127.0.0.1")
 cores = dict(cores_cfg.get("cores", {}))
 supervisor_cfg = config.get("supervisor", {})
+gateway_cfg = config.get("gateway", {})
+gateway_host = str(gateway_cfg.get("host", "127.0.0.1"))
+gateway_port = int(gateway_cfg.get("port", 8698))
+gateway_enabled = bool(gateway_cfg.get("enabled", False))
 auth_cfg = config.get("auth", {})
 auth_required = bool(auth_cfg.get("required", False))
 auth_token = str(auth_cfg.get("token", ""))
@@ -45,9 +51,56 @@ deployer = DeploymentCoordinator(root=ROOT)
 db = Database()
 failures = {name: 0 for name in cores}
 restart_history = {name: [] for name in cores}
+failures["gateway"] = 0
+restart_history["gateway"] = []
 active_deployments: dict[str, dict] = {}
 deployment_lock = threading.RLock()
 started = time.monotonic()
+
+def gateway_online() -> bool:
+    if not gateway_enabled:
+        return True
+    try:
+        with urllib.request.urlopen(
+            f"http://{gateway_host}:{gateway_port}/health",
+            timeout=1.5,
+        ) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+            return response.status == 200 and payload.get("status") == "ok"
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+        return False
+
+
+def start_gateway() -> dict:
+    if gateway_online():
+        return {"ok": True, "already_running": True}
+
+    app = ROOT / "gateway" / "app.py"
+    kwargs = {
+        "cwd": ROOT,
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+    }
+    if os.name == "nt":
+        kwargs["creationflags"] = (
+            getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            | getattr(subprocess, "DETACHED_PROCESS", 0)
+        )
+    else:
+        kwargs["start_new_session"] = True
+
+    process = subprocess.Popen([sys.executable, str(app)], **kwargs)
+    for _ in range(40):
+        time.sleep(0.25)
+        if gateway_online():
+            return {"ok": True, "pid": process.pid}
+    return {
+        "ok": False,
+        "pid": process.pid,
+        "message": "gateway health-check failed",
+    }
+
 
 def start_main() -> dict:
     current = manager.status("main")
@@ -169,6 +222,12 @@ def snapshot() -> dict:
         "status": "ok",
         "uptime_seconds": int(time.monotonic() - started),
         "safe_mode": safe_mode(),
+        "gateway": {
+            "enabled": gateway_enabled,
+            "online": gateway_online(),
+            "host": gateway_host,
+            "port": gateway_port,
+        },
         "cores": manager.snapshot(),
         "deployments": {
             name: {
@@ -211,6 +270,22 @@ def recovery_loop() -> None:
         if safe_mode():
             time.sleep(interval)
             continue
+
+        if gateway_enabled:
+            if gateway_online():
+                failures["gateway"] = 0
+            else:
+                failures["gateway"] += 1
+                logger.warning(
+                    "Supervisor gateway health failure: %s/%s",
+                    failures["gateway"],
+                    failure_threshold,
+                )
+                if failures["gateway"] >= failure_threshold:
+                    if restart_allowed("gateway"):
+                        result = start_gateway()
+                        logger.warning("Supervisor gateway recovery: %s", result)
+                    failures["gateway"] = 0
 
         for name in cores:
             if manager.desired_state(name) == "stopped":
