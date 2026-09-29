@@ -3,32 +3,32 @@
   "cores": {
     "main": {
       "port": 8700,
-      "version": "0.1.0-alpha.1",
+      "version": "0.1.0",
       "display_name": "Главное ядро"
     },
     "tooru_ai": {
       "port": 8701,
-      "version": "0.1.0-alpha.1",
+      "version": "0.1.0",
       "display_name": "Tooru/AI"
     },
     "laboratory": {
       "port": 8702,
-      "version": "0.1.0-alpha.1",
+      "version": "0.1.0",
       "display_name": "Лаборатория Tooru/AI"
     },
     "home": {
       "port": 8703,
-      "version": "0.1.0-alpha.1",
+      "version": "0.1.0",
       "display_name": "Домашнее ядро"
     },
     "work": {
       "port": 8704,
-      "version": "0.1.0-alpha.1",
+      "version": "0.1.0",
       "display_name": "Рабочее ядро"
     },
     "mobile": {
       "port": 8705,
-      "version": "0.1.0-alpha.1",
+      "version": "0.1.0",
       "display_name": "Мобильное ядро"
     }
   }
