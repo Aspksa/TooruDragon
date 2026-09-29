@@ -20,6 +20,10 @@ if(-not $python){exit 10}
 & $python "scripts\init_db.py"
 if($LASTEXITCODE -ne 0){exit 20}
 
+if(-not(Port-Up 8699)){
+    Start-Process -FilePath $python -ArgumentList ("`"{0}`"" -f (Join-Path $Root "supervisor\app.py")) -WorkingDirectory $Root -WindowStyle Hidden
+}
+
 $services=@(
     @{Port=8701;Path="core\tooru_ai\app.py"},
     @{Port=8702;Path="core\workshop\app.py"},
