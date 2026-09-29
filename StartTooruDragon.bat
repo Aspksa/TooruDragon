@@ -1,48 +1,15 @@
 @echo off
-setlocal
-title TooruDragon v0.1.0 Alpha
-
-echo ==========================================
-echo       TooruDragon v0.1.0 Alpha
-echo ==========================================
-echo.
-
+setlocal EnableExtensions
+chcp 65001 >nul
+set "PYTHONUTF8=1"
+set "PYTHONIOENCODING=utf-8"
 cd /d "%~dp0"
-
-where git >nul 2>nul
-if errorlevel 1 (
-    echo [ERROR] Git is not installed or not available in PATH.
+title TooruDragon v0.1.0 Alpha
+powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\launcher.ps1"
+set "EXIT_CODE=%ERRORLEVEL%"
+if not "%EXIT_CODE%"=="0" (
+    echo.
+    echo [ОШИБКА] Лаунчер завершился с кодом %EXIT_CODE%.
     pause
-    exit /b 1
 )
-
-where python >nul 2>nul
-if errorlevel 1 (
-    echo [ERROR] Python is not installed or not available in PATH.
-    pause
-    exit /b 1
-)
-
-echo [1/3] System Layer: checking updates...
-python "scripts\update.py"
-if errorlevel 1 (
-    echo [WARN] Automatic update was not applied. Starting current local version.
-)
-
-echo.
-echo [2/3] Starting TooruDragon...
-if exist "scripts\start_all.bat" (
-    call "scripts\start_all.bat"
-) else (
-    echo [ERROR] scripts\start_all.bat not found.
-    pause
-    exit /b 1
-)
-
-echo.
-echo [3/3] TooruDragon bootstrap finished.
-echo Main Core: http://127.0.0.1:8700
-echo Core status: http://127.0.0.1:8700/cores
-echo.
-pause
-endlocal
+exit /b %EXIT_CODE%
