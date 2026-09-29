@@ -148,12 +148,52 @@ class EventFabric:
         )
         return event
 
+    def consumer_status(self) -> list[dict]:
+        bounds = self.db.query(
+            """
+            SELECT
+                COALESCE(MIN(sequence), 0) AS earliest,
+                COALESCE(MAX(sequence), 0) AS latest
+            FROM durable_events
+            """
+        )[0]
+        earliest = int(bounds["earliest"])
+        latest = int(bounds["latest"])
+        rows = self.db.query(
+            """
+            SELECT consumer, sequence, updated_at
+            FROM event_offsets
+            ORDER BY consumer ASC
+            """
+        )
+        result = []
+        for row in rows:
+            sequence = int(row["sequence"])
+            result.append({
+                "consumer": row["consumer"],
+                "sequence": sequence,
+                "updated_at": row["updated_at"],
+                "lag": max(0, latest - sequence),
+                "retention_gap": bool(earliest and sequence < earliest - 1),
+            })
+        return result
+
     def stats(self) -> dict:
-        total = self.db.query("SELECT COUNT(*) AS n FROM durable_events")[0]["n"]
+        bounds = self.db.query(
+            """
+            SELECT
+                COUNT(*) AS n,
+                COALESCE(MIN(sequence), 0) AS earliest,
+                COALESCE(MAX(sequence), 0) AS latest
+            FROM durable_events
+            """
+        )[0]
         dlq = self.db.query("SELECT COUNT(*) AS n FROM event_dead_letters")[0]["n"]
         consumers = self.db.query("SELECT COUNT(*) AS n FROM event_offsets")[0]["n"]
         return {
-            "events": int(total),
+            "events": int(bounds["n"]),
+            "earliest_sequence": int(bounds["earliest"]),
+            "latest_sequence": int(bounds["latest"]),
             "dead_letters": int(dlq),
             "consumers": int(consumers),
             "retention": self.retention,
