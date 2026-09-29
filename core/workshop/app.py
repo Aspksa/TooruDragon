@@ -8,22 +8,25 @@ sys.path.insert(0, str(ROOT))
 
 from core.system import CoreRuntime, Route
 
+CAPABILITIES = [
+    "code",
+    "experiments",
+    "testing",
+    "builds",
+    "developer_tools",
+]
+
 runtime = CoreRuntime(
     "laboratory",
     "Лаборатория Tooru/AI: разработка, эксперименты, тестирование и сборка",
+    capabilities=CAPABILITIES,
 )
 
 
 def capabilities(_request):
     return 200, {
         "service": "laboratory",
-        "capabilities": [
-            "code",
-            "experiments",
-            "testing",
-            "builds",
-            "developer_tools",
-        ],
+        "capabilities": CAPABILITIES,
     }
 
 
