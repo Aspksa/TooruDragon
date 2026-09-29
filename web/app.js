@@ -10,6 +10,8 @@ const state = {
   events: [],
   deployments: {},
   activePage: "dashboard",
+  liveSource: null,
+  selectedWorkflow: null,
 };
 
 const coreNames = {
@@ -70,6 +72,240 @@ function fmtBytes(n) {
   return `${n.toFixed(i<2?0:1)} ${u[i]}`;
 }
 
+function drawLineChart(canvas, values, formatter) {
+  if (!canvas) return;
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const width = Math.max(320, Math.floor(rect.width));
+  const height = Number(canvas.getAttribute("height") || 150);
+  canvas.width = Math.floor(width * dpr);
+  canvas.height = Math.floor(height * dpr);
+  const ctx = canvas.getContext("2d");
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, width, height);
+
+  const clean = values.filter(v => Number.isFinite(v));
+  if (!clean.length) {
+    ctx.fillStyle = "#9ba4c0";
+    ctx.font = "12px Segoe UI";
+    ctx.fillText("Нет данных", 12, 24);
+    return;
+  }
+
+  const min = Math.min(...clean);
+  const max = Math.max(...clean);
+  const span = Math.max(1e-9, max - min);
+  const pad = 18;
+
+  ctx.strokeStyle = "rgba(155,164,192,.16)";
+  ctx.lineWidth = 1;
+  for (let i=0;i<4;i++) {
+    const y = pad + (height-pad*2) * i / 3;
+    ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(width-pad,y); ctx.stroke();
+  }
+
+  ctx.strokeStyle = "#a96cff";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  clean.forEach((v,i)=>{
+    const x = pad + (width-pad*2) * (clean.length===1 ? 1 : i/(clean.length-1));
+    const y = height-pad - (v-min)/span*(height-pad*2);
+    if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+
+  ctx.fillStyle = "#9ba4c0";
+  ctx.font = "11px Segoe UI";
+  ctx.fillText(formatter(max), pad, 12);
+  ctx.fillText(formatter(min), pad, height-4);
+}
+
+function renderTelemetryCharts() {
+  const recent = state.observability?.observability?.recent || [];
+  const ram = recent.map(x=>Number(x.rss_bytes||0)/(1024*1024));
+  const cpu = recent.map((x,i)=>{
+    if(i===0) return 0;
+    const prev = recent[i-1];
+    const dt = Number(x.timestamp||0)-Number(prev.timestamp||0);
+    const cpuNow = Number(x.user_cpu_seconds||0)+Number(x.system_cpu_seconds||0);
+    const cpuPrev = Number(prev.user_cpu_seconds||0)+Number(prev.system_cpu_seconds||0);
+    return dt>0 ? Math.max(0,(cpuNow-cpuPrev)/dt*100) : 0;
+  });
+  drawLineChart($("#ram-chart"), ram, v=>`${v.toFixed(1)} MB`);
+  drawLineChart($("#cpu-chart"), cpu, v=>`${v.toFixed(1)}%`);
+}
+
+function appendConsole(role, message, isError=false) {
+  const root = $("#agent-console");
+  if (!root) return;
+  const entry = document.createElement("div");
+  entry.className = "console-entry";
+  const label = document.createElement("span");
+  label.className = "console-role" + (isError ? " error" : role==="SYSTEM" ? " system" : "");
+  label.textContent = role;
+  const text = document.createElement("span");
+  text.textContent = message;
+  entry.append(label, text);
+  root.appendChild(entry);
+  root.scrollTop = root.scrollHeight;
+}
+
+function workflowDepthMap(tasks) {
+  const byId = new Map(tasks.map(t=>[t.id,t]));
+  const memo = new Map();
+  const depth = id => {
+    if(memo.has(id)) return memo.get(id);
+    const t = byId.get(id);
+    if(!t || !t.parent_id || !byId.has(t.parent_id)) { memo.set(id,0); return 0; }
+    const value = Math.min(12, depth(t.parent_id)+1);
+    memo.set(id,value);
+    return value;
+  };
+  tasks.forEach(t=>depth(t.id));
+  return memo;
+}
+
+function renderWorkflowGraph(tasks) {
+  const svg = $("#workflow-graph");
+  const list = $("#workflow-task-list");
+  if (!svg || !list) return;
+  if (!tasks.length) {
+    svg.innerHTML = '<text x="30" y="50" fill="#9ba4c0">Нет задач workflow</text>';
+    list.innerHTML = '<div class="empty">Нет задач</div>';
+    return;
+  }
+
+  const depth = workflowDepthMap(tasks);
+  const levels = new Map();
+  tasks.forEach(t=>{
+    const d=depth.get(t.id)||0;
+    if(!levels.has(d)) levels.set(d,[]);
+    levels.get(d).push(t);
+  });
+
+  const positions = new Map();
+  const maxDepth = Math.max(...levels.keys());
+  const width = Math.max(1000,(maxDepth+1)*230);
+  const maxRows = Math.max(...[...levels.values()].map(x=>x.length));
+  const height = Math.max(420,maxRows*110+80);
+  svg.setAttribute("viewBox",`0 0 ${width} ${height}`);
+
+  [...levels.entries()].forEach(([d,items])=>{
+    items.forEach((t,i)=>{
+      positions.set(t.id,{x:40+d*220,y:40+i*105});
+    });
+  });
+
+  const edges = tasks.filter(t=>t.parent_id && positions.has(t.parent_id)).map(t=>{
+    const a=positions.get(t.parent_id), b=positions.get(t.id);
+    return `<path class="workflow-edge" d="M ${a.x+160} ${a.y+32} C ${a.x+190} ${a.y+32}, ${b.x-30} ${b.y+32}, ${b.x} ${b.y+32}"/>`;
+  }).join("");
+
+  const nodes = tasks.map(t=>{
+    const p=positions.get(t.id);
+    return `<g class="workflow-node ${escapeHtml(t.state)}" data-task-id="${escapeHtml(t.id)}" transform="translate(${p.x},${p.y})">
+      <rect width="160" height="64"></rect>
+      <text x="12" y="24">${escapeHtml(t.kind.slice(0,21))}</text>
+      <text class="sub" x="12" y="43">${escapeHtml(t.state)} · ${escapeHtml((t.id||"").slice(0,8))}</text>
+    </g>`;
+  }).join("");
+  svg.innerHTML = edges + nodes;
+
+  list.innerHTML = tasks.map(t=>`<div class="stack-item" data-task-id="${escapeHtml(t.id)}">
+    <strong>${escapeHtml(t.kind)}</strong>
+    <div class="subtitle">${escapeHtml(t.state)} · ${escapeHtml((t.id||"").slice(0,8))}</div>
+  </div>`).join("");
+}
+
+async function loadTaskTransitions(taskId) {
+  try {
+    const data = await api(`/api/main/api/task/transitions?task_id=${encodeURIComponent(taskId)}`);
+    $("#workflow-transitions").textContent = JSON.stringify(data.transitions || [], null, 2);
+  } catch(e) {
+    $("#workflow-transitions").textContent = e.message;
+  }
+}
+
+async function loadWorkflow() {
+  try {
+    const data = await api("/api/main/api/tasks?limit=200");
+    state.tasks = data.tasks || [];
+    const workflows = [...new Set(state.tasks.map(t=>t.workflow_id).filter(Boolean))];
+    const select = $("#workflow-select");
+    const current = state.selectedWorkflow && workflows.includes(state.selectedWorkflow)
+      ? state.selectedWorkflow
+      : workflows[0] || "";
+    state.selectedWorkflow = current;
+    select.innerHTML = workflows.map(id=>`<option value="${escapeHtml(id)}" ${id===current?"selected":""}>${escapeHtml(id.slice(0,12))}</option>`).join("");
+    const tasks = state.tasks
+      .filter(t=>t.workflow_id===current)
+      .sort((a,b)=>(a.created_at||"").localeCompare(b.created_at||""));
+    renderWorkflowGraph(tasks);
+  } catch(e){toast(e.message,true)}
+}
+
+async function loadAudit() {
+  try {
+    const [history, events, consumers] = await Promise.all([
+      api("/api/main/api/core/history?limit=100"),
+      api("/api/main/events?limit=100"),
+      api("/api/main/events/consumers"),
+    ]);
+    const actions = history.history || [];
+    const eventItems = events.events || [];
+    const consumerItems = consumers.consumers || [];
+    $("#audit-core-count").textContent = actions.length;
+    $("#audit-event-count").textContent = eventItems.length;
+    $("#audit-dlq-count").textContent = consumers.event_fabric?.dead_letters ?? "—";
+    $("#audit-gap-count").textContent = consumerItems.filter(x=>x.retention_gap).length;
+    $("#audit-core-body").innerHTML = actions.map(x=>`<tr>
+      <td>${escapeHtml((x.created_at||"").replace("T"," ").slice(0,19))}</td>
+      <td>${escapeHtml(x.core_name)}</td>
+      <td>${escapeHtml(x.action)}</td>
+      <td>${x.ok ? "✓" : "✕"}</td>
+      <td>${escapeHtml(x.message||"")}</td>
+    </tr>`).join("") || '<tr><td colspan="5" class="empty">Нет записей</td></tr>';
+    $("#audit-consumer-body").innerHTML = consumerItems.map(x=>`<tr>
+      <td>${escapeHtml(x.consumer)}</td><td>${escapeHtml(x.sequence)}</td>
+      <td>${escapeHtml(x.lag)}</td><td>${x.retention_gap?"⚠":"✓"}</td>
+    </tr>`).join("") || '<tr><td colspan="4" class="empty">Consumers ещё не зарегистрированы</td></tr>';
+  } catch(e){toast(e.message,true)}
+}
+
+function startLiveEvents() {
+  if (state.liveSource) state.liveSource.close();
+  const source = new EventSource("/stream/events");
+  state.liveSource = source;
+  const badge = $("#live-stream-badge");
+  source.addEventListener("open",()=>{
+    badge.textContent="LIVE";
+    badge.className="status-pill online";
+  });
+  source.addEventListener("durable_event",event=>{
+    try {
+      const item=JSON.parse(event.data);
+      state.events = [item, ...state.events.filter(x=>x.id!==item.id)].slice(0,100);
+      if(state.activePage==="events") renderEventLog();
+    } catch {}
+  });
+  source.addEventListener("stream_error",()=>{
+    badge.textContent="LIVE DEGRADED";
+    badge.className="status-pill";
+  });
+  source.onerror=()=>{
+    badge.textContent="RECONNECTING";
+    badge.className="status-pill";
+  };
+}
+
+function renderEventLog() {
+  $("#event-log").innerHTML = state.events.map(e => `<li>
+    <div><strong>${escapeHtml(e.topic)}</strong> <span class="muted">#${escapeHtml(e.sequence)} · ${escapeHtml(e.source)}</span></div>
+    <div class="muted">${escapeHtml((e.created_at||"").replace("T"," ").slice(0,19))}</div>
+    <div>${escapeHtml(JSON.stringify(e.payload))}</div>
+  </li>`).join("") || '<li class="empty">Событий пока нет</li>';
+}
+
 async function loadDashboard() {
   const [main, supervisor, platform, obs] = await Promise.allSettled([
     api("/api/main/api/cores"),
@@ -83,6 +319,7 @@ async function loadDashboard() {
   state.observability = obs.status==="fulfilled" ? obs.value : null;
   renderDashboard();
   renderCores();
+  renderTelemetryCharts();
   updateConnection();
 }
 
@@ -207,11 +444,7 @@ async function loadEvents() {
   try {
     const data = await api("/api/main/events?limit=80");
     state.events = data.events || [];
-    $("#event-log").innerHTML = state.events.map(e => `<li>
-      <div><strong>${escapeHtml(e.topic)}</strong> <span class="muted">#${escapeHtml(e.sequence)} · ${escapeHtml(e.source)}</span></div>
-      <div class="muted">${escapeHtml((e.created_at||"").replace("T"," ").slice(0,19))}</div>
-      <div>${escapeHtml(JSON.stringify(e.payload))}</div>
-    </li>`).join("") || '<li class="empty">Событий пока нет</li>';
+    renderEventLog();
   } catch(e){toast(e.message,true)}
 }
 
@@ -271,8 +504,9 @@ async function invokeAgentTool() {
       method:"POST",body:JSON.stringify({agent_id:agent,tool,payload})
     });
     $("#agent-result").textContent = JSON.stringify(data,null,2);
+    appendConsole("TOOL", `${tool} → ${JSON.stringify(data.result)}`);
     toast("Tool выполнен");
-  } catch(e){toast(e.message,true)}
+  } catch(e){appendConsole("ERROR",e.message,true);toast(e.message,true)}
 }
 
 async function submitPlan() {
@@ -283,6 +517,7 @@ async function submitPlan() {
       method:"POST",body:JSON.stringify({agent_id:agent,steps})
     });
     $("#agent-result").textContent = JSON.stringify(data,null,2);
+    appendConsole("PLAN", `workflow=${data.plan?.workflow_id || "—"} trace=${data.plan?.trace_id || "—"}`);
     toast("План создан");
     await loadTasks();
   } catch(e){toast(e.message,true)}
@@ -302,16 +537,20 @@ function showPage(name) {
     dashboard:["Обзор","Состояние всей системы"],
     cores:["Ядра","Управление lifecycle через External Supervisor"],
     tasks:["Задачи","Durable Workflow Engine"],
-    events:["События","Durable Event Fabric"],
-    agent:["Агент","Capability-gated Agent Runtime"],
+    workflow:["Workflow","Граф зависимостей durable-задач"],
+    events:["События","Durable Event Fabric · live SSE"],
+    agent:["Agent Console","Tool Router, Planner и execution transcript"],
     control:["Control Plane","Supervisor, Gateway, deployments и consumers"],
+    audit:["Audit","Lifecycle, events и consumer integrity"],
   };
   $("#page-title").textContent = titles[name][0];
   $("#page-subtitle").textContent = titles[name][1];
   if(name==="tasks") loadTasks();
+  if(name==="workflow") loadWorkflow();
   if(name==="events") loadEvents();
   if(name==="agent") loadAgent();
   if(name==="control") loadControlPlane();
+  if(name==="audit") loadAudit();
   if(innerWidth<760) $("#sidebar").classList.remove("open");
 }
 
@@ -320,8 +559,10 @@ $("#mobile-menu").addEventListener("click",()=>$("#sidebar").classList.toggle("o
 $("#refresh").addEventListener("click",async()=>{
   await loadDashboard();
   if(state.activePage==="tasks") await loadTasks();
+  if(state.activePage==="workflow") await loadWorkflow();
   if(state.activePage==="events") await loadEvents();
   if(state.activePage==="control") await loadControlPlane();
+  if(state.activePage==="audit") await loadAudit();
   toast("Данные обновлены");
 });
 
@@ -346,6 +587,22 @@ $("#agent-id").addEventListener("input",loadAgent);
 $("#agent-tool-invoke").addEventListener("click",invokeAgentTool);
 $("#agent-plan-submit").addEventListener("click",submitPlan);
 $("#control-refresh").addEventListener("click",loadControlPlane);
+$("#workflow-refresh").addEventListener("click",loadWorkflow);
+$("#workflow-select").addEventListener("change",event=>{
+  state.selectedWorkflow=event.target.value;
+  const tasks=state.tasks.filter(t=>t.workflow_id===state.selectedWorkflow);
+  renderWorkflowGraph(tasks);
+});
+$("#workflow-graph").addEventListener("click",event=>{
+  const node=event.target.closest("[data-task-id]");
+  if(node) loadTaskTransitions(node.dataset.taskId);
+});
+$("#workflow-task-list").addEventListener("click",event=>{
+  const item=event.target.closest("[data-task-id]");
+  if(item) loadTaskTransitions(item.dataset.taskId);
+});
+$("#audit-refresh").addEventListener("click",loadAudit);
+$("#agent-console-clear").addEventListener("click",()=>{$("#agent-console").innerHTML="";});
 
 window.coreAction=coreAction;
 window.setSafeMode=setSafeMode;
@@ -358,5 +615,7 @@ window.loadTasks=loadTasks;
 window.loadEvents=loadEvents;
 window.loadControlPlane=loadControlPlane;
 
+appendConsole("SYSTEM","Agent Console готова. Доступны реальные Tool Router и Planner операции.");
 loadDashboard();
+startLiveEvents();
 setInterval(loadDashboard, 5000);
