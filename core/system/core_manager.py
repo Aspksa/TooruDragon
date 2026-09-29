@@ -104,6 +104,27 @@ class CoreManager:
         except (OSError, ValueError):
             return None
 
+    def _set_desired(self, name: str, status: str) -> None:
+        self.db.execute(
+            """
+            INSERT INTO core_state(core_name, status, updated_at)
+            VALUES(?, ?, ?)
+            ON CONFLICT(core_name) DO UPDATE SET
+                status=excluded.status,
+                updated_at=excluded.updated_at
+            """,
+            (name, status, self._utcnow()),
+        )
+
+    def desired_state(self, name: str) -> str:
+        rows = self.db.query(
+            "SELECT status FROM core_state WHERE core_name=?",
+            (name,),
+        )
+        if not rows:
+            return "running"
+        return str(rows[0]["status"])
+
     def _record(self, name: str, action: str, ok: bool, message: str = "") -> None:
         try:
             self.db.execute(
@@ -157,6 +178,7 @@ class CoreManager:
             self._record(name, "start", False, result["message"])
             return result
 
+        self._set_desired(name, "running")
         current = self.status(name)
         if current["online"]:
             result = {
@@ -232,6 +254,7 @@ class CoreManager:
             self._record(name, "stop", False, result["message"])
             return result
 
+        self._set_desired(name, "stopped")
         pid = self.pid(name)
         if pid is None:
             result = {
@@ -293,6 +316,7 @@ class CoreManager:
             self._record(name, "restart", False, result["message"])
             return result
 
+        self._set_desired(name, "running")
         stopped = self.stop(name)
         if not stopped.get("ok"):
             return {
@@ -302,6 +326,7 @@ class CoreManager:
                 "message": f"Не удалось остановить ядро: {stopped.get('message', '')}",
             }
 
+        self._set_desired(name, "running")
         started = self.start(name)
         result = {
             **started,
