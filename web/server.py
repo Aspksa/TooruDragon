@@ -149,14 +149,16 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Accel-Buffering", "no")
         self.end_headers()
 
-        last_sequence = 0
-        try:
-            initial = _upstream_json("/events?limit=1", timeout=3.0)
-            items = initial.get("events", [])
-            if items:
-                last_sequence = int(items[0].get("sequence", 0))
-        except Exception:
-            pass
+        last_event_id = self.headers.get("Last-Event-ID", "").strip()
+        last_sequence = int(last_event_id) if last_event_id.isdigit() else 0
+        if not last_sequence:
+            try:
+                initial = _upstream_json("/events?limit=1", timeout=3.0)
+                items = initial.get("events", [])
+                if items:
+                    last_sequence = int(items[0].get("sequence", 0))
+            except Exception:
+                pass
 
         deadline = time.monotonic() + 55
         try:
