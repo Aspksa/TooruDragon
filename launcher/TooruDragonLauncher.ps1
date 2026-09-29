@@ -92,9 +92,77 @@ function Update-System{
     if(Get-Command git -ErrorAction SilentlyContinue){
         Start-Process -FilePath "cmd.exe" -ArgumentList @("/k","git pull --ff-only origin main") -WorkingDirectory $Root
     }else{
-        [Windows.Forms.MessageBox]::Show("Git не найден. Автообновление недоступно.","TooruDragon")
+        Notify "Обновление" "Git не найден. Автообновление недоступно."
     }
 }
+
+function Find-Python{
+    $portable=Join-Path $Root "runtime\python\python.exe"
+    if(Test-Path $portable){return $portable}
+    try{$p=& python -c "import sys;print(sys.executable)" 2>$null;if($LASTEXITCODE -eq 0){return $p.Trim()}}catch{}
+    try{$p=& py -3 -c "import sys;print(sys.executable)" 2>$null;if($LASTEXITCODE -eq 0){return $p.Trim()}}catch{}
+    return $null
+}
+function Test-Database{
+    $py=Find-Python
+    if(-not $py){return $false}
+    & $py -c "import sqlite3; c=sqlite3.connect(r'data/toorudragon.db'); c.execute('select 1'); c.close()" 2>$null
+    return ($LASTEXITCODE -eq 0)
+}
+function Test-Utf8{
+    try{
+        $dir=Join-Path $Root "runtime";New-Item -ItemType Directory -Force -Path $dir|Out-Null
+        $p=Join-Path $dir "utf8-gui-test.txt";$s="Тору • Господин • 🐉"
+        [IO.File]::WriteAllText($p,$s,(New-Object Text.UTF8Encoding -ArgumentList $false))
+        $ok=([IO.File]::ReadAllText($p,[Text.Encoding]::UTF8) -eq $s)
+        Remove-Item $p -Force
+        return $ok
+    }catch{return $false}
+}
+function Test-Ports{
+    try{
+        foreach($p in 8700..8705){
+            $x=Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction SilentlyContinue
+            if($x -and -not(Test-Core $p)){return $false}
+        }
+        return $true
+    }catch{return $true}
+}
+function Test-Watchdog{
+    try{$w=Invoke-RestMethod -Uri "http://127.0.0.1:8700/watchdog" -TimeoutSec 1;return [bool]$w.watchdog.running}catch{return $false}
+}
+
+$tray=New-Object Windows.Forms.NotifyIcon
+$tray.Icon=[Drawing.SystemIcons]::Application
+$tray.Text="TooruDragon Launcher"
+$tray.Visible=$true
+$trayMenu=New-Object Windows.Forms.ContextMenuStrip
+$miOpen=$trayMenu.Items.Add("Открыть TooruDragon")
+$miStart=$trayMenu.Items.Add("Запустить всё")
+$miRestart=$trayMenu.Items.Add("Перезапустить")
+$miStop=$trayMenu.Items.Add("Остановить всё")
+$miWeb=$trayMenu.Items.Add("Открыть Web UI")
+[void]$trayMenu.Items.Add("-")
+$miExit=$trayMenu.Items.Add("Выход")
+$tray.ContextMenuStrip=$trayMenu
+function Notify([string]$Title,[string]$Message){
+    $tray.BalloonTipTitle=$Title;$tray.BalloonTipText=$Message;$tray.BalloonTipIcon=[Windows.Forms.ToolTipIcon]::Info
+    $tray.ShowBalloonTip(3500)
+}
+
+$splash=New-Object Windows.Forms.Form
+$splash.FormBorderStyle=[Windows.Forms.FormBorderStyle]::None
+$splash.StartPosition="CenterScreen"
+$splash.Size=New-Object Drawing.Size(540,285)
+$splash.BackColor=$bg
+$splash.TopMost=$true
+$splash.Controls.Add((L "🐉" 220 25 100 68 38 $purple ([Drawing.FontStyle]::Bold)))
+$st=L "TooruDragon" 0 103 540 48 27 $text ([Drawing.FontStyle]::Bold);$st.TextAlign=[Drawing.ContentAlignment]::MiddleCenter;$splash.Controls.Add($st)
+$ss=L "Пробуждение системы..." 0 158 540 28 11 $pink;$ss.TextAlign=[Drawing.ContentAlignment]::MiddleCenter;$splash.Controls.Add($ss)
+$progress=New-Object Windows.Forms.ProgressBar
+$progress.Location=New-Object Drawing.Point(70,215);$progress.Size=New-Object Drawing.Size(400,12);$progress.Style=[Windows.Forms.ProgressBarStyle]::Marquee
+$splash.Controls.Add($progress)
+$splash.Show();[Windows.Forms.Application]::DoEvents();Start-Sleep -Milliseconds 650
 
 $form=New-Object Windows.Forms.Form
 $form.Text="TooruDragon Launcher v0.1.0"
