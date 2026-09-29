@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT))
 from core.system.config import cores_config, system_config
 from core.system.core_manager import CoreManager
 from core.system.database import Database
+from core.system.deployment import Candidate, DeploymentCoordinator
 from core.system.logging import get_logger
 
 logger = get_logger("supervisor")
@@ -39,9 +40,12 @@ max_restarts_in_window = max(1, int(supervisor_cfg.get("max_restarts_in_window",
 safe_mode_file = ROOT / "runtime" / "safe_mode.json"
 
 manager = CoreManager(host=host, cores=cores, root=ROOT)
+deployer = DeploymentCoordinator(root=ROOT)
 db = Database()
 failures = {name: 0 for name in cores}
 restart_history = {name: [] for name in cores}
+active_deployments: dict[str, dict] = {}
+deployment_lock = threading.RLock()
 started = time.monotonic()
 
 def start_main() -> dict:
@@ -165,6 +169,13 @@ def snapshot() -> dict:
         "uptime_seconds": int(time.monotonic() - started),
         "safe_mode": safe_mode(),
         "cores": manager.snapshot(),
+        "deployments": {
+            name: {
+                "candidate": data["candidate"].__dict__,
+                "previous": data["previous"],
+            }
+            for name, data in active_deployments.items()
+        },
         "restart_budget": {
             "window_seconds": crash_loop_window_seconds,
             "max_restarts": max_restarts_in_window,
@@ -230,6 +241,89 @@ def recovery_loop() -> None:
         time.sleep(interval)
 
 
+def deploy_candidate(core: str, port: int) -> dict:
+    if safe_mode():
+        return {"ok": False, "error": "safe_mode_enabled"}
+
+    with deployment_lock:
+        existing = active_deployments.get(core)
+        if existing:
+            return {
+                "ok": False,
+                "error": "deployment_already_active",
+                "candidate": existing["candidate"].__dict__,
+            }
+
+        result = deployer.stage_and_promote(core, int(port))
+        if not result.get("ok"):
+            return result
+
+        candidate = Candidate(**result["candidate"])
+        previous = result["route"]["previous"]
+        active_deployments[core] = {
+            "candidate": candidate,
+            "previous": previous,
+        }
+        return result
+
+
+def rollback_deployment(core: str) -> dict:
+    with deployment_lock:
+        data = active_deployments.get(core)
+        if not data:
+            return {"ok": False, "error": "deployment_not_found", "core": core}
+
+        candidate = data["candidate"]
+        previous = data["previous"]
+        route = deployer.rollback_route(core, previous)
+        terminated = deployer.terminate(candidate)
+        active_deployments.pop(core, None)
+        return {
+            "ok": True,
+            "core": core,
+            "route": route,
+            "candidate_terminated": terminated,
+        }
+
+
+def complete_deployment(core: str) -> dict:
+    with deployment_lock:
+        data = active_deployments.get(core)
+        if not data:
+            return {"ok": False, "error": "deployment_not_found", "core": core}
+
+        entry = cores.get(core)
+        if entry is None:
+            return {"ok": False, "error": "unknown_core", "core": core}
+        canonical_port = int(entry["port"] if isinstance(entry, dict) else entry)
+
+        if not manager.is_online(core):
+            return {
+                "ok": False,
+                "error": "canonical_not_ready",
+                "core": core,
+                "canonical_port": canonical_port,
+            }
+
+        candidate = data["candidate"]
+        route = deployer.rollback_route(
+            core,
+            {
+                "host": host,
+                "port": canonical_port,
+                "slot": "canonical",
+            },
+        )
+        terminated = deployer.terminate(candidate)
+        active_deployments.pop(core, None)
+        return {
+            "ok": True,
+            "core": core,
+            "route": route,
+            "candidate_terminated": terminated,
+        }
+
+
 class Handler(BaseHTTPRequestHandler):
     def authorized(self) -> bool:
         if not auth_required:
@@ -264,6 +358,12 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/status":
             self.send_json(200, snapshot())
             return
+        if self.path == "/deployments":
+            if not self.authorized():
+                self.send_json(401, {"error": "unauthorized"})
+                return
+            self.send_json(200, {"deployments": snapshot()["deployments"]})
+            return
         self.send_json(404, {"error": "not_found"})
 
     def do_POST(self) -> None:
@@ -290,6 +390,28 @@ class Handler(BaseHTTPRequestHandler):
             except json.JSONDecodeError:
                 self.send_json(400, {"error": "invalid_json"})
             return
+
+        if self.path in {
+            "/deployment/promote",
+            "/deployment/rollback",
+            "/deployment/complete",
+        }:
+            try:
+                length = int(self.headers.get("Content-Length", "0") or 0)
+                raw = self.rfile.read(length) if length else b"{}"
+                payload = json.loads(raw.decode("utf-8"))
+                core = str(payload.get("core", "")).strip()
+                if self.path == "/deployment/promote":
+                    result = deploy_candidate(core, int(payload.get("port")))
+                elif self.path == "/deployment/rollback":
+                    result = rollback_deployment(core)
+                else:
+                    result = complete_deployment(core)
+                self.send_json(200 if result.get("ok") else 409, result)
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                self.send_json(400, {"error": "invalid_deployment_request", "message": str(exc)})
+            return
+
         self.send_json(404, {"error": "not_found"})
 
     def log_message(self, fmt: str, *args) -> None:
