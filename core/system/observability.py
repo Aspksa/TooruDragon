@@ -12,6 +12,14 @@ except ImportError:
     resource = None
 
 
+class FILETIME(ctypes.Structure):
+    _fields_ = [("dwLowDateTime", ctypes.c_uint32), ("dwHighDateTime", ctypes.c_uint32)]
+
+    def seconds(self) -> float:
+        ticks = (int(self.dwHighDateTime) << 32) | int(self.dwLowDateTime)
+        return ticks / 10_000_000.0
+
+
 class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
     _fields_ = [
         ("cb", ctypes.c_ulong),
@@ -48,9 +56,26 @@ class Observability:
         )
         return int(counters.WorkingSetSize) if ok else 0
 
+    def _windows_cpu_times(self) -> tuple[float, float]:
+        creation = FILETIME()
+        exit_time = FILETIME()
+        kernel = FILETIME()
+        user = FILETIME()
+        ok = ctypes.windll.kernel32.GetProcessTimes(
+            ctypes.windll.kernel32.GetCurrentProcess(),
+            ctypes.byref(creation),
+            ctypes.byref(exit_time),
+            ctypes.byref(kernel),
+            ctypes.byref(user),
+        )
+        if not ok:
+            return 0.0, 0.0
+        return round(user.seconds(), 3), round(kernel.seconds(), 3)
+
     def _process_stats(self) -> tuple[int, float, float]:
         if os.name == "nt":
-            return self._windows_rss(), 0.0, 0.0
+            user_cpu, system_cpu = self._windows_cpu_times()
+            return self._windows_rss(), user_cpu, system_cpu
 
         if resource is None:
             return 0, 0.0, 0.0
@@ -66,6 +91,7 @@ class Observability:
     def sample(self) -> dict:
         rss, user_cpu, system_cpu = self._process_stats()
         value = {
+            "timestamp": time.time(),
             "uptime_seconds": int(time.monotonic() - self.started),
             "pid": os.getpid(),
             "rss_bytes": rss,
