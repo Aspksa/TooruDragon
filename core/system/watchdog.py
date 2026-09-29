@@ -20,6 +20,7 @@ class Watchdog:
         interval_seconds: int = 10,
         failure_threshold: int = 3,
         auto_restart: bool = True,
+        restart_callback=None,
     ):
         self.host = host
         self.cores = cores
@@ -28,6 +29,7 @@ class Watchdog:
         self.interval_seconds = max(2, interval_seconds)
         self.failure_threshold = max(1, failure_threshold)
         self.auto_restart = auto_restart
+        self.restart_callback = restart_callback
         self.failures = {name: 0 for name in cores if name != "main"}
         self.state = {}
         self._stop = threading.Event()
@@ -59,8 +61,23 @@ class Watchdog:
     def _restart(self, name: str) -> None:
         if not self.auto_restart:
             return
+
+        if self.restart_callback is not None:
+            self.logger.warning("Watchdog restarting core via Core Manager: %s", name)
+            try:
+                result = self.restart_callback(name)
+                if not result.get("ok"):
+                    self.logger.error(
+                        "Core Manager restart failed for %s: %s",
+                        name,
+                        result.get("message", "unknown error"),
+                    )
+            except Exception:
+                self.logger.exception("Core Manager restart raised for %s", name)
+            return
+
         if os.name != "nt":
-            self.logger.warning("Watchdog restart skipped for %s: Windows launcher required", name)
+            self.logger.warning("Watchdog restart skipped for %s: no restart callback", name)
             return
 
         paths = {
@@ -74,7 +91,7 @@ class Watchdog:
         if not launcher:
             return
 
-        self.logger.warning("Watchdog restarting core: %s", name)
+        self.logger.warning("Watchdog restarting core with legacy launcher: %s", name)
         subprocess.Popen(
             ["cmd", "/c", "start", f"TooruDragon {name}", "cmd", "/k", launcher],
             cwd=self.root,
