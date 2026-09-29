@@ -1,36 +1,155 @@
 from __future__ import annotations
 
 import subprocess
+from dataclasses import dataclass
+from pathlib import Path
 
+from .backup import BackupManager
 from .logging import get_logger
 from .paths import ROOT
-
 
 logger = get_logger("updater")
 
 
-def _run(*args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        list(args),
-        cwd=ROOT,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+@dataclass
+class UpdateResult:
+    ok: bool
+    changed: bool = False
+    rolled_back: bool = False
+    backup_path: str | None = None
+    previous_head: str | None = None
+    current_head: str | None = None
+    message: str = ""
+
+
+class UpdateManager:
+    def __init__(self, root: Path = ROOT):
+        self.root = root
+        self.backups = BackupManager(root)
+
+    def _run(self, *args: str) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            list(args),
+            cwd=self.root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+    def _head(self) -> str:
+        result = self._run("git", "rev-parse", "HEAD")
+        return result.stdout.strip() if result.returncode == 0 else ""
+
+    def _is_clean(self) -> bool:
+        result = self._run("git", "status", "--porcelain")
+        return result.returncode == 0 and not result.stdout.strip()
+
+    def _python_validation(self) -> bool:
+        compile_result = subprocess.run(
+            [
+                "python",
+                "-m",
+                "compileall",
+                "-q",
+                "core",
+                "scripts",
+                "web",
+            ],
+            cwd=self.root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if compile_result.returncode != 0:
+            logger.error("Python validation failed: %s", compile_result.stderr.strip())
+            return False
+
+        init_result = subprocess.run(
+            ["python", "scripts/init_db.py"],
+            cwd=self.root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if init_result.returncode != 0:
+            logger.error("Database migration/init failed: %s", init_result.stderr.strip())
+            return False
+
+        return True
+
+    def update(self, branch: str = "main", remote: str = "origin") -> UpdateResult:
+        logger.info("Safe update started: %s/%s", remote, branch)
+
+        if not self._is_clean():
+            return UpdateResult(
+                ok=False,
+                message="Рабочая копия Git содержит незакоммиченные изменения. "
+                "Автообновление остановлено, чтобы ничего не потерять.",
+            )
+
+        previous_head = self._head()
+        backup = self.backups.create(reason=f"before-update:{previous_head}")
+        self.backups.prune(keep=10)
+
+        fetch = self._run("git", "fetch", remote, branch)
+        if fetch.returncode != 0:
+            return UpdateResult(
+                ok=False,
+                backup_path=str(backup),
+                previous_head=previous_head,
+                message=f"git fetch завершился ошибкой: {fetch.stderr.strip()}",
+            )
+
+        remote_head_result = self._run("git", "rev-parse", f"{remote}/{branch}")
+        remote_head = remote_head_result.stdout.strip()
+        if remote_head == previous_head:
+            return UpdateResult(
+                ok=True,
+                changed=False,
+                backup_path=str(backup),
+                previous_head=previous_head,
+                current_head=previous_head,
+                message="Обновлений нет.",
+            )
+
+        pull = self._run("git", "pull", "--ff-only", remote, branch)
+        if pull.returncode != 0:
+            self.backups.restore(backup, restore_git=True)
+            return UpdateResult(
+                ok=False,
+                changed=False,
+                rolled_back=True,
+                backup_path=str(backup),
+                previous_head=previous_head,
+                current_head=self._head(),
+                message=f"Обновление не применено; выполнен rollback: {pull.stderr.strip()}",
+            )
+
+        current_head = self._head()
+        if not self._python_validation():
+            restored = self.backups.restore(backup, restore_git=True)
+            return UpdateResult(
+                ok=False,
+                changed=True,
+                rolled_back=restored,
+                backup_path=str(backup),
+                previous_head=previous_head,
+                current_head=self._head(),
+                message="Проверка новой версии не пройдена. "
+                + ("Выполнен rollback." if restored else "Rollback завершился ошибкой."),
+            )
+
+        logger.info("Safe update completed: %s -> %s", previous_head, current_head)
+        return UpdateResult(
+            ok=True,
+            changed=True,
+            rolled_back=False,
+            backup_path=str(backup),
+            previous_head=previous_head,
+            current_head=current_head,
+            message="Обновление успешно установлено и проверено.",
+        )
 
 
 def update(branch: str = "main") -> bool:
-    logger.info("Checking GitHub updates for branch %s", branch)
-
-    fetch = _run("git", "fetch", "origin", branch)
-    if fetch.returncode != 0:
-        logger.warning("git fetch failed: %s", fetch.stderr.strip())
-        return False
-
-    pull = _run("git", "pull", "--ff-only", "origin", branch)
-    if pull.returncode != 0:
-        logger.warning("git pull failed: %s", pull.stderr.strip())
-        return False
-
-    logger.info("Repository update completed")
-    return True
+    return UpdateManager().update(branch=branch).ok
