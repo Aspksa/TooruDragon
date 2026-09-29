@@ -241,6 +241,66 @@ def recovery_loop() -> None:
         time.sleep(interval)
 
 
+def persist_deployment(core: str, candidate: Candidate, previous: dict) -> None:
+    db.execute(
+        """
+        INSERT INTO deployment_state(core_name, candidate_json, previous_json, created_at)
+        VALUES(?, ?, ?, ?)
+        ON CONFLICT(core_name) DO UPDATE SET
+            candidate_json=excluded.candidate_json,
+            previous_json=excluded.previous_json,
+            created_at=excluded.created_at
+        """,
+        (
+            core,
+            json.dumps(candidate.__dict__, ensure_ascii=False),
+            json.dumps(previous, ensure_ascii=False),
+            datetime.now(timezone.utc).isoformat(),
+        ),
+    )
+
+
+def delete_deployment(core: str) -> None:
+    db.execute(
+        "DELETE FROM deployment_state WHERE core_name=?",
+        (core,),
+    )
+
+
+def restore_deployments() -> None:
+    rows = db.query(
+        """
+        SELECT core_name, candidate_json, previous_json
+        FROM deployment_state
+        ORDER BY core_name
+        """
+    )
+    for row in rows:
+        core = row["core_name"]
+        try:
+            candidate = Candidate(**json.loads(row["candidate_json"]))
+            previous = json.loads(row["previous_json"])
+            probe = deployer.probe(candidate, timeout_seconds=2)
+            if not probe.get("ok"):
+                try:
+                    deployer.rollback_route(core, previous)
+                except Exception:
+                    logger.exception("Failed to restore previous route for %s", core)
+                delete_deployment(core)
+                continue
+
+            active_deployments[core] = {
+                "candidate": candidate,
+                "previous": previous,
+            }
+            try:
+                deployer.promote(candidate)
+            except Exception:
+                logger.exception("Failed to re-sync candidate route for %s", core)
+        except Exception:
+            logger.exception("Failed to restore deployment state for %s", core)
+
+
 def deploy_candidate(core: str, port: int) -> dict:
     if safe_mode():
         return {"ok": False, "error": "safe_mode_enabled"}
@@ -264,6 +324,7 @@ def deploy_candidate(core: str, port: int) -> dict:
             "candidate": candidate,
             "previous": previous,
         }
+        persist_deployment(core, candidate, previous)
         return result
 
 
@@ -278,6 +339,7 @@ def rollback_deployment(core: str) -> dict:
         route = deployer.rollback_route(core, previous)
         terminated = deployer.terminate(candidate)
         active_deployments.pop(core, None)
+        delete_deployment(core)
         return {
             "ok": True,
             "core": core,
@@ -316,6 +378,7 @@ def complete_deployment(core: str) -> dict:
         )
         terminated = deployer.terminate(candidate)
         active_deployments.pop(core, None)
+        delete_deployment(core)
         return {
             "ok": True,
             "core": core,
@@ -420,6 +483,7 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> int:
     db.initialize(str(config.get("version", "0.3.0-alpha")))
+    restore_deployments()
     thread = threading.Thread(
         target=recovery_loop,
         name="toorudragon-supervisor-recovery",
