@@ -85,8 +85,15 @@ function Stop-Port([int]$port){
     return $false
 }
 function Start-System{
-    $startBat=Join-Path $Root "StartTooruDragon.bat"
-    Start-Process -FilePath "cmd.exe" -ArgumentList @("/c","`"$startBat`"") -WorkingDirectory $Root
+    if(Find-Python){
+        $hidden=Join-Path $Root "scripts\start_hidden.ps1"
+        Start-Process -FilePath "powershell.exe" -ArgumentList @("-NoProfile","-ExecutionPolicy","Bypass","-File","`"$hidden`"") -WorkingDirectory $Root -WindowStyle Hidden
+        Notify "TooruDragon" "Запуск ядер начат в фоновом режиме."
+    }else{
+        $startBat=Join-Path $Root "StartTooruDragon.bat"
+        Start-Process -FilePath "cmd.exe" -ArgumentList @("/c","`"$startBat`"") -WorkingDirectory $Root
+        Notify "TooruDragon" "Python ещё не подготовлен — открыт первый технический запуск."
+    }
 }
 function Stop-System{
     foreach($c in ($cores|Sort-Object Port -Descending)){[void](Stop-Port $c.Port)}
