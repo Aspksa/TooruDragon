@@ -62,6 +62,7 @@ class UpdateManager:
                 "web",
                 "tests",
                 "supervisor",
+                "gateway",
             ],
             cwd=self.root,
             text=True,
