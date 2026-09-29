@@ -48,6 +48,7 @@ class DeploymentCoordinator:
 
         env = dict(**__import__("os").environ)
         env["TOORUDRAGON_PORT_OVERRIDE"] = str(int(port))
+        env["TOORUDRAGON_DISABLE_REGISTRY"] = "1"
         process = subprocess.Popen(
             [sys.executable, str(self.root / path)],
             cwd=self.root,
