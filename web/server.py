@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 ROOT = Path(__file__).resolve().parent
 HOST = "127.0.0.1"
 PORT = 8710
+MAX_BODY_BYTES = 2_500_000
 
 UPSTREAMS = {
     "main": "http://127.0.0.1:8700",
@@ -76,6 +77,7 @@ POST_ALLOWLIST = {
     ),
     "tooru_ai": (
         "/chat",
+        "/inference",
         "/memory/remember",
         "/rag/ingest",
     ),
@@ -261,6 +263,12 @@ class Handler(BaseHTTPRequestHandler):
         body = None
         if method == "POST":
             length = int(self.headers.get("Content-Length", "0") or 0)
+            if length > MAX_BODY_BYTES:
+                self._json(413, {
+                    "error": "payload_too_large",
+                    "max_bytes": MAX_BODY_BYTES,
+                })
+                return
             body = self.rfile.read(length) if length else b"{}"
 
         headers = {"Accept": "application/json"}
