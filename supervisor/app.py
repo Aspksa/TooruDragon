@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import json
 import os
 import signal
@@ -24,6 +25,10 @@ cores_cfg = cores_config()
 host = cores_cfg.get("host", "127.0.0.1")
 cores = dict(cores_cfg.get("cores", {}))
 supervisor_cfg = config.get("supervisor", {})
+auth_cfg = config.get("auth", {})
+auth_required = bool(auth_cfg.get("required", False))
+auth_token = str(auth_cfg.get("token", ""))
+
 listen_host = str(supervisor_cfg.get("host", "127.0.0.1"))
 listen_port = int(supervisor_cfg.get("port", 8699))
 interval = max(2, int(supervisor_cfg.get("interval_seconds", 5)))
@@ -227,6 +232,19 @@ def recovery_loop() -> None:
 
 
 class Handler(BaseHTTPRequestHandler):
+    def authorized(self) -> bool:
+        if not auth_required:
+            return True
+        if not auth_token:
+            return False
+        header = self.headers.get("Authorization", "")
+        scheme, _, provided = header.partition(" ")
+        return (
+            scheme.lower() == "bearer"
+            and bool(provided)
+            and hmac.compare_digest(provided, auth_token)
+        )
+
     def send_json(self, status: int, payload: dict) -> None:
         body = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
         self.send_response(status)
@@ -250,6 +268,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_json(404, {"error": "not_found"})
 
     def do_POST(self) -> None:
+        if not self.authorized():
+            self.send_json(401, {"error": "unauthorized"})
+            return
         if self.path == "/safe-mode/enable":
             set_safe_mode(True, "api_request")
             self.send_json(200, {"safe_mode": True})
