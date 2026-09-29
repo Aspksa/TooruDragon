@@ -104,6 +104,86 @@ class AIMemoryStore:
             "created_at": created_at,
         }
 
+    def add_exchange(
+        self,
+        conversation_id: str,
+        user_content: str,
+        assistant_content: str,
+        *,
+        provider: str | None = None,
+        model: str | None = None,
+        trace_id: str | None = None,
+        user_metadata: dict | None = None,
+        assistant_metadata: dict | None = None,
+    ) -> dict:
+        self.ensure_conversation(conversation_id)
+        now = _now()
+        user_id = str(uuid4())
+        assistant_id = str(uuid4())
+        with self.db.connect() as db:
+            db.execute(
+                """
+                INSERT INTO ai_messages(
+                    id, conversation_id, role, content, provider, model,
+                    trace_id, metadata_json, created_at
+                )
+                VALUES(?, ?, 'user', ?, NULL, NULL, ?, ?, ?)
+                """,
+                (
+                    user_id,
+                    conversation_id,
+                    user_content,
+                    trace_id,
+                    json.dumps(user_metadata or {}, ensure_ascii=False),
+                    now,
+                ),
+            )
+            db.execute(
+                """
+                INSERT INTO ai_messages(
+                    id, conversation_id, role, content, provider, model,
+                    trace_id, metadata_json, created_at
+                )
+                VALUES(?, ?, 'assistant', ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    assistant_id,
+                    conversation_id,
+                    assistant_content,
+                    provider,
+                    model,
+                    trace_id,
+                    json.dumps(assistant_metadata or {}, ensure_ascii=False),
+                    now,
+                ),
+            )
+            db.execute(
+                "UPDATE ai_conversations SET updated_at=? WHERE id=?",
+                (now, conversation_id),
+            )
+        return {
+            "user": {
+                "id": user_id,
+                "conversation_id": conversation_id,
+                "role": "user",
+                "content": user_content,
+                "trace_id": trace_id,
+                "metadata": user_metadata or {},
+                "created_at": now,
+            },
+            "assistant": {
+                "id": assistant_id,
+                "conversation_id": conversation_id,
+                "role": "assistant",
+                "content": assistant_content,
+                "provider": provider,
+                "model": model,
+                "trace_id": trace_id,
+                "metadata": assistant_metadata or {},
+                "created_at": now,
+            },
+        }
+
     def history(self, conversation_id: str, limit: int = 24) -> list[dict]:
         rows = self.db.query(
             """
