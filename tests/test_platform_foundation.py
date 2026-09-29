@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from core.system.contracts import Envelope, validate_envelope
-from core.system.agent_runtime import AgentRuntime, ToolRouter
+from core.system.agent_runtime import AgentRuntime, Tool, ToolRouter
 from core.system.database import Database
 from core.system.event_fabric import EventFabric
 from core.system.policy import PolicyEngine
@@ -227,12 +227,18 @@ class AgentRuntimeTests(unittest.TestCase):
         self.workflow = WorkflowEngine(self.db)
         self.policy = PolicyEngine({
             "_default": "deny",
-            "planner": ["workflow.create"],
+            "planner": ["workflow.create", "documents.read"],
         })
+        self.router = ToolRouter(self.policy)
+        self.router.register(Tool(
+            name="demo.read",
+            capability="documents.read",
+            handler=lambda payload: {"echo": payload.get("value")},
+        ))
         self.runtime = AgentRuntime(
             self.workflow,
             self.policy,
-            ToolRouter(self.policy),
+            self.router,
         )
 
     def tearDown(self):
@@ -260,6 +266,25 @@ class AgentRuntimeTests(unittest.TestCase):
             self.runtime.submit_plan(
                 agent_id="unknown",
                 steps=[{"kind": "noop", "payload": {}}],
+            )
+
+
+    def test_tool_router_enforces_capability_policy(self):
+        catalog = self.router.catalog("planner")
+        self.assertEqual(catalog[0]["name"], "demo.read")
+
+        result = self.router.invoke(
+            "planner",
+            "demo.read",
+            {"value": 42},
+        )
+        self.assertEqual(result, {"echo": 42})
+
+        with self.assertRaises(PermissionError):
+            self.router.invoke(
+                "unknown",
+                "demo.read",
+                {"value": 42},
             )
 
 
