@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -47,17 +49,31 @@ registry_config = runtime.config.get("service_registry", {})
 service_registry = ServiceRegistry(
     stale_after_seconds=int(registry_config.get("stale_after_seconds", 35))
 )
-service_registry.register({
-    "name": runtime.name,
-    "display_name": runtime.display_name,
-    "version": runtime.version,
-    "host": runtime.host,
-    "port": runtime.port,
-    "role": runtime.role,
-    "capabilities": runtime.capabilities,
-    "pid": os.getpid(),
-    "uptime_seconds": 0,
-})
+MAIN_STARTED_AT = time.monotonic()
+
+
+def register_main_service() -> None:
+    service_registry.register({
+        "name": runtime.name,
+        "display_name": runtime.display_name,
+        "version": runtime.version,
+        "host": runtime.host,
+        "port": runtime.port,
+        "role": runtime.role,
+        "capabilities": runtime.capabilities,
+        "pid": os.getpid(),
+        "uptime_seconds": int(time.monotonic() - MAIN_STARTED_AT),
+    })
+
+
+def main_registry_heartbeat() -> None:
+    interval = max(3, int(registry_config.get("heartbeat_seconds", 10)))
+    while True:
+        register_main_service()
+        time.sleep(interval)
+
+
+register_main_service()
 
 watchdog_config = runtime.config.get("watchdog", {})
 watchdog = Watchdog(
@@ -168,6 +184,13 @@ def registry_status(_request):
 
 def registry_register(request):
     payload = request.json if isinstance(request.json, dict) else {}
+    name = str(payload.get("name", "")).strip()
+    if name not in runtime.cores:
+        return 400, {
+            "error": "unknown_service",
+            "message": f"Сервис {name!r} отсутствует в config/cores.json",
+        }
+
     try:
         service = service_registry.register(payload)
     except (ValueError, TypeError) as exc:
@@ -183,6 +206,12 @@ def registry_register(request):
 
 
 if __name__ == "__main__":
+    threading.Thread(
+        target=main_registry_heartbeat,
+        name="registry-main",
+        daemon=True,
+    ).start()
+
     if bool(watchdog_config.get("enabled", True)):
         watchdog.start()
 
