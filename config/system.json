@@ -81,7 +81,9 @@
     "interval_seconds": 5,
     "failure_threshold": 3,
     "enabled": true,
-    "startup_grace_seconds": 15
+    "startup_grace_seconds": 15,
+    "crash_loop_window_seconds": 300,
+    "max_restarts_in_window": 5
   },
   "event_fabric": {
     "retention": 10000
@@ -91,6 +93,7 @@
     "max_samples": 300
   },
   "agent_runtime": {
-    "enabled": true
+    "enabled": true,
+    "max_plan_steps": 32
   }
 }
