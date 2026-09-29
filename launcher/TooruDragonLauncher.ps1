@@ -309,13 +309,18 @@ foreach($c in $cores){
 $diag=P 18 692 1110 120 $panel
 $home.Controls.Add($diag)
 $diag.Controls.Add((L "⌁  Состояние системы" 18 9 300 34 14 $text ([Drawing.FontStyle]::Bold)))
+$diagLabels=@{}
 $x=18
 foreach($name in @("Python","Git","SQLite","Порты","Watchdog","UTF-8")){
     $b=P $x 48 165 55 $panel2
-    $b.Controls.Add((L "✔" 10 12 28 28 14 $green ([Drawing.FontStyle]::Bold)))
+    $s=L "●" 10 12 28 28 14 $yellow ([Drawing.FontStyle]::Bold
+)
+    $v=L "Проверка..." 44 29 110 20 8.5 $yellow
+    $b.Controls.Add($s)
     $b.Controls.Add((L $name 44 7 110 22 9.5 $text ([Drawing.FontStyle]::Bold)))
-    $b.Controls.Add((L "Готово" 44 29 110 20 8.5 $green))
+    $b.Controls.Add($v)
     $diag.Controls.Add($b)
+    $diagLabels[$name]=@($s,$v)
     $x+=180
 }
 
@@ -368,19 +373,28 @@ $logsPage.Controls.Add($load);$logsPage.Controls.Add($clear)
 
 $settings=$pages["Настройки"]
 $settings.Controls.Add((L "⚙ Настройки" 24 20 500 50 25 $text ([Drawing.FontStyle]::Bold)))
-$settings.Controls.Add((L "Переносимый режим и оформление" 27 70 600 28 10.5 $muted))
-$box=P 24 120 800 400 $panel
+$settings.Controls.Add((L "Windows, переносимый режим и оформление" 27 70 700 28 10.5 $muted))
+$box=P 24 120 880 505 $panel
 $settings.Controls.Add($box)
-$box.Controls.Add((L "Переносимый режим" 24 25 300 30 12 $text ([Drawing.FontStyle]::Bold)))
-$box.Controls.Add((L "Все пути считаются от папки TooruDragon. Можно запускать с внешнего SSD или USB." 24 60 700 44 10 $muted))
-$box.Controls.Add((L "Аниме-фон" 24 130 300 30 12 $text ([Drawing.FontStyle]::Bold)))
-$box.Controls.Add((L "assets\launcher\tooru-maid.png" 24 164 500 25 10 $pink))
-$box.Controls.Add((L "Положите сюда выбранную аниме-драконицу — GUI подхватит её при запуске." 24 195 700 40 10 $muted))
-$folder=B "📁 Открыть папку проекта" 24 275 250 48 $purple
-$assets=B "♡ Папка оформления" 290 275 220 48 $pink
-$folder.Add_Click({Start-Process explorer.exe $Root})
+$box.Controls.Add((L "Windows" 24 24 300 30 13 $text ([Drawing.FontStyle]::Bold)))
+$autoOn=B "⚡ Включить автозапуск" 24 65 250 46 $green
+$autoOff=B "○ Убрать автозапуск" 288 65 230 46 $red
+$shortcut=B "★ Создать ярлык" 532 65 210 46 $purple
+$autoOn.Add_Click({& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root "scripts\install_startup.ps1");Notify "Автозапуск" "Автозапуск TooruDragon включён."})
+$autoOff.Add_Click({& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root "scripts\uninstall_startup.ps1");Notify "Автозапуск" "Автозапуск отключён."})
+$shortcut.Add_Click({& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root "scripts\create_shortcut.ps1");Notify "Ярлык" "Ярлык создан на рабочем столе."})
+$box.Controls.Add($autoOn);$box.Controls.Add($autoOff);$box.Controls.Add($shortcut)
+$box.Controls.Add((L "Оформление" 24 145 300 30 13 $text ([Drawing.FontStyle]::Bold)))
+$box.Controls.Add((L "Аниме-фон: assets\launcher\tooru-maid.png" 24 185 600 26 10 $pink))
+$box.Controls.Add((L "Логотип: assets\launcher\logo.svg" 24 216 600 26 10 $cyan))
+$assets=B "♡ Открыть папку оформления" 24 260 280 46 $pink
 $assets.Add_Click({$p=Join-Path $Root "assets\launcher";New-Item -ItemType Directory -Force -Path $p|Out-Null;Start-Process explorer.exe $p})
-$box.Controls.Add($folder);$box.Controls.Add($assets)
+$box.Controls.Add($assets)
+$box.Controls.Add((L "Переносимый режим" 24 335 300 30 13 $text ([Drawing.FontStyle]::Bold)))
+$box.Controls.Add((L "Пути рассчитываются от папки TooruDragon. Внешний SSD, USB и смена буквы диска поддерживаются." 24 375 790 48 10 $muted))
+$folder=B "📁 Открыть папку проекта" 24 435 250 46 $purple
+$folder.Add_Click({Start-Process explorer.exe $Root})
+$box.Controls.Add($folder)
 
 $timer=New-Object Windows.Forms.Timer
 $timer.Interval=1500
