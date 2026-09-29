@@ -324,6 +324,12 @@ def recovery_loop() -> None:
                 failures[name] = 0
                 continue
 
+            with deployment_lock:
+                deployment_active = name in active_deployments
+            if deployment_active:
+                failures[name] = 0
+                continue
+
             if manager.is_online(name):
                 failures[name] = 0
                 continue
