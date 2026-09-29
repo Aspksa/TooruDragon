@@ -537,3 +537,24 @@ Control Center дополнен операционным live-слоем:
 
 Для графиков и workflow-визуализации не добавлены npm/CDN-зависимости: используются
 нативные Canvas, SVG и EventSource.
+
+
+## 🧠 Tooru/AI Model Runtime
+
+Tooru/AI теперь имеет настоящий model/runtime слой:
+
+- provider-independent **Model Router**;
+- OpenAI-compatible local/remote providers;
+- реальные `/chat`, `/models`, `/runtime`;
+- persistent conversations;
+- explicit retrieval memory;
+- локальный RAG document index;
+- RAG chunk injection в chat context;
+- provider keys через `SecretStore`, без plaintext в Git/config;
+- Web Agent Console подключён к Tooru/AI через Blue/Green Gateway.
+
+По умолчанию provider templates выключены. TooruDragon не делает вид, что модель
+установлена: пока provider не включён и не настроен, `/chat` честно возвращает
+`provider_unavailable`.
+
+Подробности: `docs/AI_RUNTIME.md`.
