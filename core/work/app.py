@@ -6,20 +6,27 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from core.common.server import run_server
+from core.system import CoreRuntime, Route
 
-HOST = "127.0.0.1"
-PORT = 8704
+runtime = CoreRuntime(
+    "work",
+    "Рабочее ядро: проекты, документы, задачи и рабочие интеграции",
+)
 
 
-def health():
+def capabilities(_request):
     return 200, {
         "service": "work",
-        "version": "0.1.0-alpha",
-        "status": "ok",
-        "role": "Workflows and project operations",
+        "capabilities": [
+            "projects",
+            "documents",
+            "tasks",
+            "work_integrations",
+        ],
     }
 
 
 if __name__ == "__main__":
-    run_server("work", HOST, PORT, {"/health": health})
+    runtime.run({
+        "/capabilities": Route(capabilities, protected=False),
+    })
