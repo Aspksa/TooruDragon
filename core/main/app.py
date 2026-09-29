@@ -35,6 +35,11 @@ MAIN_CAPABILITIES = [
     "workflow_engine",
     "policy_engine",
     "supervisor_boundary",
+    "external_supervisor",
+    "durable_event_fabric",
+    "observability",
+    "agent_runtime",
+    "tool_router",
 ]
 
 runtime = CoreRuntime(
