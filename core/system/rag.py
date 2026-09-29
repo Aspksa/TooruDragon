@@ -182,7 +182,7 @@ class RAGIndex:
         return scored[: max(1, min(int(limit), 50))]
 
     def documents(self, limit: int = 100) -> list[dict]:
-        return self.db.query(
+        rows = self.db.query(
             """
             SELECT
                 d.id,
@@ -200,3 +200,9 @@ class RAGIndex:
             """,
             (max(1, min(int(limit), 500)),),
         )
+        result = []
+        for row in rows:
+            item = dict(row)
+            item["metadata"] = json.loads(item.pop("metadata_json") or "{}")
+            result.append(item)
+        return result
