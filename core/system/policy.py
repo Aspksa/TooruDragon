@@ -18,8 +18,15 @@ class PolicyEngine:
             return Decision(False, "subject_and_capability_required")
 
         subject_policy = self.policies.get(subject, {})
-        denied = set(subject_policy.get("deny", []))
-        allowed = set(subject_policy.get("allow", []))
+        if isinstance(subject_policy, list):
+            denied = set()
+            allowed = set(subject_policy)
+        elif isinstance(subject_policy, dict):
+            denied = set(subject_policy.get("deny", []))
+            allowed = set(subject_policy.get("allow", []))
+        else:
+            denied = set()
+            allowed = set()
 
         if capability in denied or "*" in denied:
             return Decision(False, "explicit_deny")
