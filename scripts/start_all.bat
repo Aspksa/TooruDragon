@@ -34,11 +34,15 @@ echo [ПРОВЕРКА] Проверяю состояние всех ядер...
 "%PYTHON_EXE%" "scripts\check_health.py"
 if errorlevel 1 (
     echo [ПРЕДУПРЕЖДЕНИЕ] Не все ядра подтвердили готовность.
+    echo [ROLLBACK] Проверяю последнее обновление...
+    "%PYTHON_EXE%" "scripts\finalize_update.py" --rollback
     exit /b 3
 )
+"%PYTHON_EXE%" "scripts\finalize_update.py" --success >nul 2>nul
 echo.
 echo [ГОТОВО] Все ядра отвечают.
 echo [АДРЕС] Главное ядро:  http://127.0.0.1:8700
+echo [АДРЕС] Service Registry: http://127.0.0.1:8700/registry
 echo [АДРЕС] Tooru/AI:       http://127.0.0.1:8701
 echo [АДРЕС] Лаборатория:    http://127.0.0.1:8702
 echo [АДРЕС] Дом:            http://127.0.0.1:8703
