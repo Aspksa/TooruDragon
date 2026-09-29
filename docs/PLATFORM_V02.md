@@ -1,14 +1,14 @@
-# TooruDragon Core Platform v0.2 Alpha
+# TooruDragon Core Platform v0.2
 
 Core Platform v0.2 introduces stable boundaries for long-lived evolution without
-requiring the current Python Alpha to be rewritten.
+requiring the current Python implementation to be rewritten.
 
 ## Control Plane
 
 The current process model remains compatible, but Main Core now exposes a stable
 control-plane boundary:
 
-- `SupervisorFacade` — embedded Supervisor contract for Alpha;
+- `SupervisorFacade` — embedded Supervisor contract for the current implementation;
 - `CoreManager` — lifecycle management;
 - `PolicyEngine` — deny-by-default capabilities;
 - `SecretStore` — pluggable secret providers;
@@ -42,7 +42,7 @@ remote-node implementations.
 
 ## Durable Workflow Engine
 
-SQLite is used as the Alpha persistence backend, but the API is deliberately
+SQLite is used as the local persistence backend, but the API is deliberately
 backend-independent.
 
 Task lifecycle:
@@ -159,7 +159,7 @@ Explicit allow/deny dictionaries are also supported.
 
 `SecretStore` never writes secret values to SQLite or JSON.
 
-The Alpha provider reads environment variables using:
+The environment provider reads environment variables using:
 
 ```text
 TOORUDRAGON_SECRET_<NORMALIZED_NAME>
