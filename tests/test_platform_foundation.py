@@ -12,6 +12,26 @@ from core.system.policy import PolicyEngine
 from core.system.workflow import WorkflowEngine
 
 
+class DatabaseTransactionTests(unittest.TestCase):
+    def test_exception_rolls_back_transaction(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Database(Path(tmp) / "tx.db")
+            db.initialize("test")
+            with self.assertRaises(RuntimeError):
+                with db.connect() as conn:
+                    conn.execute(
+                        "INSERT INTO system_meta(key, value) VALUES(?, ?)",
+                        ("should_rollback", "yes"),
+                    )
+                    raise RuntimeError("force rollback")
+
+            rows = db.query(
+                "SELECT value FROM system_meta WHERE key=?",
+                ("should_rollback",),
+            )
+            self.assertEqual(rows, [])
+
+
 class ContractTests(unittest.TestCase):
     def test_envelope_is_versioned_and_traceable(self):
         envelope = Envelope.create(
