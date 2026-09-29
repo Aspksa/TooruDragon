@@ -422,15 +422,36 @@ $autoOn.Add_Click({& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Jo
 $autoOff.Add_Click({& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root "scripts\uninstall_startup.ps1");Notify "Автозапуск" "Автозапуск отключён."})
 $shortcut.Add_Click({& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root "scripts\create_shortcut.ps1");Notify "Ярлык" "Ярлык создан на рабочем столе."})
 $box.Controls.Add($autoOn);$box.Controls.Add($autoOff);$box.Controls.Add($shortcut)
-$box.Controls.Add((L "Оформление" 24 145 300 30 13 $text ([Drawing.FontStyle]::Bold)))
-$box.Controls.Add((L "Аниме-фон: assets\launcher\tooru-maid.jpg" 24 185 600 26 10 $pink))
-$box.Controls.Add((L "Логотип: assets\launcher\logo.svg" 24 216 600 26 10 $cyan))
-$assets=B "♡ Открыть папку оформления" 24 260 280 46 $pink
+$backupNow=B "💾 Создать backup" 24 125 230 42 $cyan
+$rollback=B "↶ Откатить последний" 268 125 250 42 $yellow
+$backupNow.Add_Click({
+    $py=Find-Python
+    if($py){
+        & $py (Join-Path $Root "scripts\backup.py")
+        if($LASTEXITCODE -eq 0){Notify "Backup" "Резервная копия создана."}else{Notify "Backup" "Не удалось создать резервную копию."}
+    }
+})
+$rollback.Add_Click({
+    $answer=[Windows.Forms.MessageBox]::Show("Остановить ядра и восстановить последний backup?","TooruDragon Rollback",[Windows.Forms.MessageBoxButtons]::YesNo,[Windows.Forms.MessageBoxIcon]::Warning)
+    if($answer -eq [Windows.Forms.DialogResult]::Yes){
+        Stop-System
+        $py=Find-Python
+        if($py){
+            & $py (Join-Path $Root "scripts\rollback.py")
+            if($LASTEXITCODE -eq 0){Notify "Rollback" "Backup восстановлен. Запускаю систему.";Start-System}else{Notify "Rollback" "Не удалось восстановить backup."}
+        }
+    }
+})
+$box.Controls.Add($backupNow);$box.Controls.Add($rollback)
+$box.Controls.Add((L "Оформление" 24 185 300 30 13 $text ([Drawing.FontStyle]::Bold)))
+$box.Controls.Add((L "Аниме-фон: assets\launcher\tooru-maid.jpg" 24 225 600 26 10 $pink))
+$box.Controls.Add((L "Логотип: assets\launcher\logo.svg" 24 256 600 26 10 $cyan))
+$assets=B "♡ Открыть папку оформления" 24 300 280 46 $pink
 $assets.Add_Click({$p=Join-Path $Root "assets\launcher";New-Item -ItemType Directory -Force -Path $p|Out-Null;Start-Process explorer.exe $p})
 $box.Controls.Add($assets)
-$box.Controls.Add((L "Переносимый режим" 24 335 300 30 13 $text ([Drawing.FontStyle]::Bold)))
-$box.Controls.Add((L "Пути рассчитываются от папки TooruDragon. Внешний SSD, USB и смена буквы диска поддерживаются." 24 375 790 48 10 $muted))
-$folder=B "📁 Открыть папку проекта" 24 435 250 46 $purple
+$box.Controls.Add((L "Переносимый режим" 24 375 300 30 13 $text ([Drawing.FontStyle]::Bold)))
+$box.Controls.Add((L "Пути рассчитываются от папки TooruDragon. Внешний SSD, USB и смена буквы диска поддерживаются." 24 415 790 48 10 $muted))
+$folder=B "📁 Открыть папку проекта" 560 125 250 42 $purple
 $folder.Add_Click({Start-Process explorer.exe $Root})
 $box.Controls.Add($folder)
 
