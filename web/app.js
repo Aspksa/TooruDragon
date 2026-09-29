@@ -138,9 +138,9 @@ function renderCores() {
         <div>Latency<strong>${c.latency_ms==null?"—":escapeHtml(c.latency_ms)+" ms"}</strong></div>
       </div>
       <div class="card-actions">
-        <button class="btn good" onclick="coreAction('${key}','start')">Start</button>
-        <button class="btn" onclick="coreAction('${key}','restart')">Restart</button>
-        <button class="btn danger" onclick="coreAction('${key}','stop')">Stop</button>
+        <button class="btn good" data-core-action="start" data-core="${key}">Start</button>
+        <button class="btn" data-core-action="restart" data-core="${key}">Restart</button>
+        <button class="btn danger" data-core-action="stop" data-core="${key}">Stop</button>
       </div>
     </article>`;
   }).join("");
@@ -235,8 +235,8 @@ async function loadControlPlane() {
       <td>${escapeHtml(d.candidate?.pid)}</td>
       <td>${escapeHtml(d.previous?.slot||"canonical")}</td>
       <td>
-        <button class="btn" onclick="deploymentAction('${core}','complete')">Complete</button>
-        <button class="btn danger" onclick="deploymentAction('${core}','rollback')">Rollback</button>
+        <button class="btn" data-deployment-action="complete" data-core="${core}">Complete</button>
+        <button class="btn danger" data-deployment-action="rollback" data-core="${core}">Rollback</button>
       </td>
     </tr>`).join("") || '<tr><td colspan="5" class="empty">Активных deployment нет</td></tr>';
   } catch(e){toast(e.message,true)}
@@ -324,6 +324,28 @@ $("#refresh").addEventListener("click",async()=>{
   if(state.activePage==="control") await loadControlPlane();
   toast("Данные обновлены");
 });
+
+document.addEventListener("click", event => {
+  const coreButton = event.target.closest("[data-core-action]");
+  if (coreButton) {
+    coreAction(coreButton.dataset.core, coreButton.dataset.coreAction);
+    return;
+  }
+  const deploymentButton = event.target.closest("[data-deployment-action]");
+  if (deploymentButton) {
+    deploymentAction(deploymentButton.dataset.core, deploymentButton.dataset.deploymentAction);
+  }
+});
+
+$("#safe-mode-enable").addEventListener("click",()=>setSafeMode(true));
+$("#safe-mode-disable").addEventListener("click",()=>setSafeMode(false));
+$("#tasks-refresh").addEventListener("click",loadTasks);
+$("#task-create").addEventListener("click",createTask);
+$("#events-refresh").addEventListener("click",loadEvents);
+$("#agent-id").addEventListener("input",loadAgent);
+$("#agent-tool-invoke").addEventListener("click",invokeAgentTool);
+$("#agent-plan-submit").addEventListener("click",submitPlan);
+$("#control-refresh").addEventListener("click",loadControlPlane);
 
 window.coreAction=coreAction;
 window.setSafeMode=setSafeMode;
