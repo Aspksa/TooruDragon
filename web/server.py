@@ -88,6 +88,16 @@ def _token() -> str:
 class Handler(BaseHTTPRequestHandler):
     server_version = "TooruDragonWeb/0.3.0"
 
+    def _trusted_origin(self) -> bool:
+        origin = self.headers.get("Origin")
+        if not origin:
+            return True
+        return origin in {
+            "http://127.0.0.1:8710",
+            "http://localhost:8710",
+        }
+
+
     def _send_bytes(
         self,
         status: int,
@@ -228,6 +238,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         if self.path.startswith("/api/"):
+            if not self._trusted_origin():
+                self._json(403, {"error": "untrusted_origin"})
+                return
+            content_type = self.headers.get("Content-Type", "")
+            if not content_type.lower().startswith("application/json"):
+                self._json(415, {"error": "application_json_required"})
+                return
             self._proxy("POST")
             return
         self._json(404, {"error": "not_found"})
