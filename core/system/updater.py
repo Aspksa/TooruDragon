@@ -70,17 +70,6 @@ class UpdateManager:
             logger.error("Python validation failed: %s", compile_result.stderr.strip())
             return False
 
-        init_result = subprocess.run(
-            [python, "scripts/init_db.py"],
-            cwd=self.root,
-            text=True,
-            capture_output=True,
-            check=False,
-        )
-        if init_result.returncode != 0:
-            logger.error("Database migration/init failed: %s", init_result.stderr.strip())
-            return False
-
         return True
 
     def _write_pending(
