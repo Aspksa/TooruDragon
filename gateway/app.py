@@ -100,6 +100,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Request-Id")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.end_headers()
         self.wfile.write(body)
 
@@ -147,6 +150,8 @@ class Handler(BaseHTTPRequestHandler):
                 )
                 self.send_header("Content-Length", str(len(data)))
                 self.send_header("X-TooruDragon-Route", f"{core}:{route['slot']}")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Request-Id")
                 request_id = response.headers.get("X-Request-Id")
                 if request_id:
                     self.send_header("X-Request-Id", request_id)
@@ -161,6 +166,8 @@ class Handler(BaseHTTPRequestHandler):
             )
             self.send_header("Content-Length", str(len(data)))
             self.send_header("X-TooruDragon-Route", f"{core}:{route['slot']}")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Request-Id")
             self.end_headers()
             self.wfile.write(data)
         except (urllib.error.URLError, TimeoutError) as exc:
