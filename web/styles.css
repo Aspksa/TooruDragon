@@ -185,3 +185,5 @@ canvas{width:100%;display:block}
 .console-role.error{color:var(--red)}
 .audit-metrics{margin-bottom:14px}
 @media(max-width:1050px){.chart-grid{grid-template-columns:1fr}}
+
+.muted{color:var(--muted)}
