@@ -231,6 +231,14 @@ class Handler(BaseHTTPRequestHandler):
             })
 
     def do_GET(self) -> None:
+        if self.path == "/health":
+            self._json(200, {
+                "service": "web",
+                "version": "0.3.0",
+                "status": "ok",
+                "control_center": True,
+            })
+            return
         if self.path.startswith("/api/"):
             self._proxy("GET")
             return
