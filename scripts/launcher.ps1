@@ -8,14 +8,14 @@ $ErrorActionPreference = "Stop"
 $OutputEncoding = [Console]::OutputEncoding
 $Root = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 Set-Location $Root
-$Host.UI.RawUI.WindowTitle = "🐉 TooruDragon v0.1.0 Alpha — Русский лаунчер"
+$Host.UI.RawUI.WindowTitle = "🐉 TooruDragon v0.3.0 — Русский лаунчер"
 
 function Write-Logo {
     Clear-Host
     Write-Host ""
     Write-Host "╔══════════════════════════════════════════════════════════════╗" -ForegroundColor DarkCyan
     Write-Host "║                🐉  T O O R U D R A G O N  🐉              ║" -ForegroundColor Cyan
-    Write-Host "║                  v0.1.0 Alpha • Launcher                   ║" -ForegroundColor DarkCyan
+    Write-Host "║                  v0.3.0 • Launcher                   ║" -ForegroundColor DarkCyan
     Write-Host "╚══════════════════════════════════════════════════════════════╝" -ForegroundColor DarkCyan
     Write-Host ""
 }
