@@ -229,3 +229,24 @@ This provides a single operator view for lifecycle and event-delivery integrity.
 Web Control Center 2.0 still has no npm, bundler, framework or CDN dependency.
 Charts, workflow visualization and streaming are implemented with browser-native
 Canvas, SVG and EventSource APIs.
+
+
+## Real Tooru/AI Chat
+
+Agent Console now talks to the actual Tooru/AI Chat Runtime through Gateway
+routing.
+
+It exposes:
+
+- configured provider status;
+- provider selection;
+- optional model override;
+- persisted conversations;
+- real `POST /chat`;
+- explicit memory save/search;
+- RAG document ingestion/search.
+
+If no provider is enabled, the console displays the actual
+`provider_unavailable` response. It does not synthesize a fake answer.
+
+See `docs/AI_RUNTIME.md`.
