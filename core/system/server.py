@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Callable
 from urllib.parse import parse_qs, urlparse
+from uuid import uuid4
 
 from .auth import AuthService
 
@@ -16,6 +17,7 @@ class Request:
     query: dict[str, list[str]]
     headers: dict[str, str]
     json: dict | list | None
+    request_id: str
 
 
 @dataclass
@@ -37,7 +39,7 @@ def run_server(
     class Handler(BaseHTTPRequestHandler):
         server_version = f"TooruDragon/{version}"
 
-        def _send_json(self, status: int, payload: dict) -> None:
+        def _send_json(self, status: int, payload: dict, request_id: str | None = None) -> None:
             body = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
             self.send_response(status)
             self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -46,6 +48,8 @@ def run_server(
             self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
             self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
             self.send_header("Cache-Control", "no-store")
+            if request_id:
+                self.send_header("X-Request-Id", request_id)
             self.end_headers()
             self.wfile.write(body)
 
@@ -57,12 +61,14 @@ def run_server(
                 raw = self.rfile.read(length)
                 if raw:
                     payload = json.loads(raw.decode("utf-8"))
+            request_id = self.headers.get("X-Request-Id") or str(uuid4())
             return Request(
                 method=self.command,
                 path=parsed.path,
                 query=parse_qs(parsed.query),
                 headers={key: value for key, value in self.headers.items()},
                 json=payload,
+                request_id=request_id,
             )
 
         def _dispatch(self) -> None:
@@ -73,22 +79,25 @@ def run_server(
                         "service": name,
                         "version": version,
                         "status": "running",
-                    })
+                        "request_id": request.request_id,
+                    }, request.request_id)
                     return
 
                 route = routes.get(request.path)
                 if route is None or route.method.upper() != request.method:
-                    self._send_json(404, {"error": "not_found", "path": request.path})
+                    self._send_json(404, {"error": "not_found", "path": request.path}, request.request_id)
                     return
 
                 if route.protected and not auth.authorize(
                     self.headers.get("Authorization")
                 ):
-                    self._send_json(401, {"error": "unauthorized"})
+                    self._send_json(401, {"error": "unauthorized"}, request.request_id)
                     return
 
                 status, payload = route.handler(request)
-                self._send_json(status, payload)
+                if isinstance(payload, dict):
+                    payload.setdefault("request_id", request.request_id)
+                self._send_json(status, payload, request.request_id)
             except json.JSONDecodeError:
                 self._send_json(400, {"error": "invalid_json"})
             except Exception:
