@@ -10,7 +10,7 @@ $iconPath=Join-Path $Root "assets\launcher\toorudragon.ico"
 if(-not(Test-Path $iconPath)){
     try{& powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root "scripts\create_icon.ps1") | Out-Null}catch{}
 }
-$appIcon=if(Test-Path $iconPath){New-Object Drawing.Icon($iconPath)}else{[Drawing.SystemIcons]::Application}
+$appIcon=if(Test-Path $iconPath){New-Object Drawing.Icon -ArgumentList $iconPath}else{[Drawing.SystemIcons]::Application}
 
 $bg = [Drawing.Color]::FromArgb(9,12,23)
 $panel = [Drawing.Color]::FromArgb(17,23,41)
