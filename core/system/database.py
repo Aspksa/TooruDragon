@@ -14,7 +14,7 @@ class Database:
     def initialize(self, version: str) -> None:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         schema = SCHEMA_PATH.read_text(encoding="utf-8")
-        with sqlite3.connect(self.path) as db:
+        with sqlite3.connect(self.path, timeout=10) as db:
             db.executescript(schema)
             db.execute(
                 "INSERT OR REPLACE INTO system_meta(key, value) VALUES(?, ?)",
@@ -28,7 +28,7 @@ class Database:
 
     @contextmanager
     def connect(self):
-        connection = sqlite3.connect(self.path)
+        connection = sqlite3.connect(self.path, timeout=10)
         connection.row_factory = sqlite3.Row
         try:
             yield connection
