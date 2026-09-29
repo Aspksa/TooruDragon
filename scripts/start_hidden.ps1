@@ -38,4 +38,9 @@ try{$web=Get-NetTCPConnection -LocalPort 8710 -State Listen -ErrorAction Silentl
 if(-not $web){Start-Process -FilePath $python -ArgumentList ("`"{0}`"" -f (Join-Path $Root "web\server.py")) -WorkingDirectory $Root -WindowStyle Hidden}
 Start-Sleep -Seconds 2
 & $python "scripts\check_health.py"
-exit $LASTEXITCODE
+if($LASTEXITCODE -ne 0){
+    & $python "scripts\finalize_update.py" --rollback
+    exit 30
+}
+& $python "scripts\finalize_update.py" --success | Out-Null
+exit 0
