@@ -37,5 +37,42 @@
   },
   "event_bus": {
     "max_events": 500
+  },
+  "workflow": {
+    "lease_seconds": 60,
+    "max_attempts": 3,
+    "requeue_expired_on_start": true
+  },
+  "policy": {
+    "_default": "deny",
+    "main": [
+      "system.core.manage",
+      "workflow.manage",
+      "workflow.worker",
+      "secrets.metadata"
+    ],
+    "tooru_ai": [
+      "workflow.create",
+      "workflow.read"
+    ],
+    "laboratory": [
+      "workflow.create",
+      "workflow.read",
+      "workflow.worker"
+    ],
+    "home": [
+      "workflow.create",
+      "workflow.read",
+      "workflow.worker"
+    ],
+    "work": [
+      "workflow.create",
+      "workflow.read",
+      "workflow.worker"
+    ],
+    "mobile": [
+      "workflow.create",
+      "workflow.read"
+    ]
   }
 }
