@@ -534,12 +534,12 @@ async function loadAIRuntime() {
     const names = Object.keys(providers);
     providerSelect.innerHTML = names.map(name => {
       const item = providers[name];
-      const suffix = item.enabled && item.secret_available ? "ready" : "disabled";
+      const suffix = item.enabled && item.secret_available && item.model_configured ? "ready" : "setup";
       return `<option value="${escapeHtml(name)}" ${name===models.default_provider?"selected":""}>${escapeHtml(name)} · ${suffix}</option>`;
     }).join("") || '<option value="">provider not configured</option>';
 
     const ready = Object.entries(providers)
-      .filter(([,item])=>item.enabled && item.secret_available)
+      .filter(([,item])=>item.enabled && item.secret_available && item.model_configured)
       .map(([name])=>name);
     $("#ai-runtime-status").textContent = ready.length
       ? `Model Router ready: ${ready.join(", ")} · retrieval=${runtimeData.runtime?.memory?.retrieval || "—"}`
