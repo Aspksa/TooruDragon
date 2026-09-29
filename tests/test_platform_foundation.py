@@ -6,6 +6,9 @@ from pathlib import Path
 
 from core.system.contracts import Envelope, validate_envelope
 from core.system.agent_runtime import AgentRuntime, Tool, ToolRouter
+from core.system.model_router import ModelProviderError, ModelRouter
+from core.system.chat_runtime import ChatConfig, ChatRuntime
+from core.system.ai_memory import AIMemoryStore
 from core.system.database import Database
 from core.system.event_fabric import EventFabric
 from core.system.observability import Observability
@@ -238,6 +241,129 @@ class ObservabilityTests(unittest.TestCase):
         self.assertGreater(first["timestamp"], 0)
         self.assertIn("rss_bytes", first)
         self.assertGreaterEqual(len(second["recent"]), 2)
+
+
+
+class FakeModelRouter:
+    def __init__(self):
+        self.last_messages = None
+
+    def chat(self, messages, **kwargs):
+        self.last_messages = messages
+        return {
+            "provider": "fake",
+            "model": "fake-model",
+            "content": "response",
+            "finish_reason": "stop",
+            "usage": {"input_tokens": 1, "output_tokens": 1},
+            "raw_id": "fake-1",
+        }
+
+    def status(self):
+        return {
+            "default_provider": "fake",
+            "providers": {
+                "fake": {
+                    "enabled": True,
+                    "secret_available": True,
+                }
+            },
+            "available": True,
+        }
+
+
+class AIRuntimeTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.db = Database(Path(self.tmp.name) / "ai.db")
+        self.db.initialize("test")
+        self.memory = AIMemoryStore(self.db)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_memory_retrieval_ranks_overlap(self):
+        first = self.memory.remember(
+            "global",
+            "dragon architecture uses a durable event fabric",
+            source="test",
+        )
+        self.memory.remember(
+            "global",
+            "unrelated grocery shopping note",
+            source="test",
+        )
+        results = self.memory.retrieve(
+            "durable event architecture",
+            scope="global",
+            limit=5,
+        )
+        self.assertTrue(results)
+        self.assertEqual(results[0]["id"], first["id"])
+        self.assertGreater(results[0]["score"], 0)
+
+    def test_chat_injects_retrieval_context_and_persists_exchange(self):
+        self.memory.remember(
+            "global",
+            "TooruDragon uses a Gateway for blue green routing",
+            source="test",
+        )
+        router = FakeModelRouter()
+        runtime = ChatRuntime(
+            router,
+            self.memory,
+            ChatConfig(
+                system_prompt="system prompt",
+                history_limit=10,
+                retrieval_limit=5,
+                memory_scope="global",
+            ),
+        )
+
+        result = runtime.chat(
+            "How does Gateway routing work?",
+            trace_id="trace-test",
+        )
+        history = self.memory.history(result["conversation_id"], limit=10)
+
+        self.assertEqual(result["content"], "response")
+        self.assertEqual([item["role"] for item in history], ["user", "assistant"])
+        self.assertEqual(history[0]["trace_id"], "trace-test")
+        self.assertEqual(history[1]["provider"], "fake")
+        self.assertTrue(
+            any(
+                "Relevant memory context" in item["content"]
+                for item in router.last_messages
+                if item["role"] == "system"
+            )
+        )
+
+    def test_disabled_provider_does_not_persist_exchange(self):
+        router = ModelRouter({
+            "default_provider": "local",
+            "providers": {
+                "local": {
+                    "type": "openai_compatible",
+                    "enabled": False,
+                    "base_url": "http://127.0.0.1:9/v1",
+                    "model": "test-model",
+                }
+            },
+        })
+        runtime = ChatRuntime(
+            router,
+            self.memory,
+            ChatConfig(system_prompt="system"),
+        )
+        with self.assertRaises(ModelProviderError):
+            runtime.chat("hello")
+
+        conversations = self.memory.conversations()
+        self.assertEqual(len(conversations), 1)
+        self.assertEqual(
+            self.memory.history(conversations[0]["id"], limit=10),
+            [],
+        )
 
 
 
