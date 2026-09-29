@@ -16,7 +16,7 @@ from core.system import CoreRuntime, Route
 from core.system.compatibility import CompatibilityManager
 from core.system.core_manager import CoreManager
 from core.system.event_bus import EventBus
-from core.system.agent_runtime import AgentRuntime, ToolRouter
+from core.system.agent_runtime import AgentRuntime, Tool, ToolRouter
 from core.system.observability import Observability
 from core.system.policy import PolicyEngine
 from core.system.secrets import SecretStore
@@ -68,13 +68,31 @@ observability = Observability(
     max_samples=int(runtime.config.get("observability", {}).get("max_samples", 300))
 )
 tool_router = ToolRouter(policy_engine)
-agent_runtime = AgentRuntime(workflow_engine, policy_engine, tool_router)
+agent_runtime = AgentRuntime(
+    workflow_engine,
+    policy_engine,
+    tool_router,
+    max_plan_steps=int(runtime.config.get("agent_runtime", {}).get("max_plan_steps", 32)),
+)
 
 registry_config = runtime.config.get("service_registry", {})
 service_registry = ServiceRegistry(
     stale_after_seconds=int(registry_config.get("stale_after_seconds", 35))
 )
 MAIN_STARTED_AT = time.monotonic()
+
+
+tool_router.register(Tool(
+    name="system.cores.snapshot",
+    capability="system.observe",
+    handler=lambda _payload: {"cores": core_manager.snapshot()},
+))
+tool_router.register(Tool(
+    name="events.stats",
+    capability="system.observe",
+    handler=lambda _payload: {"event_fabric": event_bus.stats()},
+))
+
 
 
 def register_main_service() -> None:
@@ -168,6 +186,8 @@ def routes(_request):
             "/events/dlq": "Перенос события в dead-letter queue",
             "/observability": "Метрики и runtime telemetry",
             "/agents/plan": "Capability-gated agent plan submission",
+            "/agents/tools": "Список разрешённых tools агента",
+            "/agents/tool/invoke": "Policy-gated вызов tool",
         },
     }
 
@@ -252,6 +272,40 @@ def observability_status(_request):
         "observability": observability.snapshot(),
         "event_fabric": event_bus.stats(),
     }
+
+
+def agent_tools(request):
+    agent_id = str(request.query.get("agent_id", [""])[0]).strip()
+    if not agent_id:
+        return 400, {"error": "agent_id_required"}
+    return 200, {
+        "agent_id": agent_id,
+        "tools": tool_router.catalog(agent_id),
+    }
+
+
+def agent_tool_invoke(request):
+    payload = request.json if isinstance(request.json, dict) else {}
+    agent_id = str(payload.get("agent_id", "")).strip()
+    name = str(payload.get("tool", "")).strip()
+    tool_payload = payload.get("payload", {})
+    if not isinstance(tool_payload, dict):
+        return 400, {"error": "payload_must_be_object"}
+    try:
+        result = tool_router.invoke(agent_id, name, tool_payload)
+    except KeyError:
+        return 404, {"error": "tool_not_found", "tool": name}
+    except PermissionError as exc:
+        return 403, {"error": "tool_denied", "message": str(exc)}
+    except (ValueError, TypeError) as exc:
+        return 400, {"error": "tool_failed", "message": str(exc)}
+
+    event_bus.publish(
+        "agent.tool.invoked",
+        agent_id,
+        {"tool": name},
+    )
+    return 200, {"tool": name, "result": result}
 
 
 def agent_plan(request):
@@ -392,7 +446,7 @@ def core_history(request):
 def platform_status(_request):
     return 200, {
         "service": "main",
-        "architecture": "control-plane-v0.2",
+        "architecture": "control-plane-v0.3",
         "supervisor": supervisor.snapshot(),
         "policy": policy_engine.snapshot(),
         "secrets": secret_store.metadata(),
@@ -616,6 +670,8 @@ if __name__ == "__main__":
         "/events/dlq": Route(event_dlq, method="POST", protected=True),
         "/observability": Route(observability_status, protected=True),
         "/agents/plan": Route(agent_plan, method="POST", protected=True),
+        "/agents/tools": Route(agent_tools, protected=True),
+        "/agents/tool/invoke": Route(agent_tool_invoke, method="POST", protected=True),
     }
 
     for core_name in runtime.cores:
