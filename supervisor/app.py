@@ -27,11 +27,14 @@ listen_port = int(supervisor_cfg.get("port", 8699))
 interval = max(2, int(supervisor_cfg.get("interval_seconds", 5)))
 failure_threshold = max(1, int(supervisor_cfg.get("failure_threshold", 3)))
 startup_grace_seconds = max(0, int(supervisor_cfg.get("startup_grace_seconds", 15)))
+crash_loop_window_seconds = max(30, int(supervisor_cfg.get("crash_loop_window_seconds", 300)))
+max_restarts_in_window = max(1, int(supervisor_cfg.get("max_restarts_in_window", 5)))
 safe_mode_file = ROOT / "runtime" / "safe_mode.json"
 
 manager = CoreManager(host=host, cores=cores, root=ROOT)
 db = Database()
 failures = {name: 0 for name in cores}
+restart_history = {name: [] for name in cores}
 started = time.monotonic()
 
 def start_main() -> dict:
@@ -93,7 +96,31 @@ def snapshot() -> dict:
         "uptime_seconds": int(time.monotonic() - started),
         "safe_mode": safe_mode(),
         "cores": manager.snapshot(),
+        "restart_budget": {
+            "window_seconds": crash_loop_window_seconds,
+            "max_restarts": max_restarts_in_window,
+            "history": {name: len(values) for name, values in restart_history.items()},
+        },
     }
+
+
+def restart_allowed(name: str) -> bool:
+    now = time.monotonic()
+    history = [
+        stamp
+        for stamp in restart_history[name]
+        if now - stamp <= crash_loop_window_seconds
+    ]
+    restart_history[name] = history
+    if len(history) >= max_restarts_in_window:
+        set_safe_mode(
+            True,
+            f"crash_loop:{name}:{len(history)}_restarts_in_{crash_loop_window_seconds}s",
+        )
+        logger.error("Crash loop detected for %s; entering safe mode", name)
+        return False
+    history.append(now)
+    return True
 
 
 def recovery_loop() -> None:
@@ -122,6 +149,9 @@ def recovery_loop() -> None:
                 failure_threshold,
             )
             if failures[name] >= failure_threshold:
+                if not restart_allowed(name):
+                    failures[name] = 0
+                    break
                 if name == "main":
                     result = start_main()
                 else:
