@@ -1,6 +1,8 @@
 @echo off
 setlocal EnableExtensions
 chcp 65001 >nul
+set "PYTHONUTF8=1"
+set "PYTHONIOENCODING=utf-8"
 cd /d "%~dp0\.."
 set "PYTHON_EXE=%TOORUDRAGON_PYTHON%"
 if not defined PYTHON_EXE set "PYTHON_EXE=python"
@@ -13,8 +15,9 @@ echo.
 echo [БАЗА] Инициализация общей базы данных...
 "%PYTHON_EXE%" "scripts\init_db.py"
 if errorlevel 1 exit /b 2
-echo [SUPERVISOR] Запуск внешнего Control Plane...
-start "TooruDragon - Supervisor" cmd /k "chcp 65001>nul && set PYTHONUTF8=1 && set PYTHONIOENCODING=utf-8 && \"%PYTHON_EXE%\" \"supervisor\app.py\""
+echo [SUPERVISOR] Проверка внешнего Control Plane...
+"%PYTHON_EXE%" -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8699/health', timeout=0.5).read()" >nul 2>nul
+if errorlevel 1 start "TooruDragon - Supervisor" "%PYTHON_EXE%" "supervisor\app.py"
 echo [ЯДРО] Запуск Tooru/AI...
 start "TooruDragon - Tooru AI" cmd /k "chcp 65001>nul && set PYTHONUTF8=1 && set PYTHONIOENCODING=utf-8 && "core\tooru_ai\start.bat""
 echo [ЯДРО] Запуск Лаборатории Tooru/AI...
