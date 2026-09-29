@@ -42,16 +42,41 @@ class ToolRouter:
         return result
 
 
+class Planner:
+    def __init__(self, max_steps: int = 32):
+        self.max_steps = max(1, int(max_steps))
+
+    def validate(self, steps: list[dict]) -> list[dict]:
+        if not steps:
+            raise ValueError("plan requires at least one step")
+        if len(steps) > self.max_steps:
+            raise ValueError(f"plan exceeds max_steps={self.max_steps}")
+        normalized = []
+        for index, raw in enumerate(steps):
+            if not isinstance(raw, dict):
+                raise TypeError(f"step {index} must be an object")
+            kind = str(raw.get("kind", "")).strip()
+            if not kind:
+                raise ValueError(f"step {index} has no kind")
+            item = dict(raw)
+            item["kind"] = kind
+            normalized.append(item)
+        return normalized
+
+
 class AgentRuntime:
     def __init__(
         self,
         workflow: WorkflowEngine,
         policy: PolicyEngine,
         tools: ToolRouter,
+        *,
+        max_plan_steps: int = 32,
     ):
         self.workflow = workflow
         self.policy = policy
         self.tools = tools
+        self.planner = Planner(max_steps=max_plan_steps)
 
     def submit_plan(
         self,
@@ -61,16 +86,13 @@ class AgentRuntime:
         trace_id: str | None = None,
     ) -> dict:
         self.policy.require(agent_id, "workflow.create")
-        if not steps:
-            raise ValueError("plan requires at least one step")
+        steps = self.planner.validate(steps)
 
         workflow_id = None
         created = []
         parent_id = None
         for index, step in enumerate(steps):
-            kind = str(step.get("kind", "")).strip()
-            if not kind:
-                raise ValueError(f"step {index} has no kind")
+            kind = step["kind"]
             task = self.workflow.create_task(
                 kind=kind,
                 payload=step.get("payload", {}),
