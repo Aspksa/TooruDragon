@@ -156,6 +156,12 @@ function Test-Ports{
 function Test-Watchdog{
     try{$w=Invoke-RestMethod -Uri "http://127.0.0.1:8700/watchdog" -TimeoutSec 1;return [bool]$w.watchdog.running}catch{return $false}
 }
+function Test-Registry{
+    try{
+        $r=Invoke-RestMethod -Uri "http://127.0.0.1:8700/registry" -TimeoutSec 1
+        return ($r.registry.online -ge 1)
+    }catch{return $false}
+}
 
 $tray=New-Object Windows.Forms.NotifyIcon
 $tray.Icon=$appIcon
@@ -344,8 +350,8 @@ $home.Controls.Add($diag)
 $diag.Controls.Add((L "⌁  Состояние системы" 18 9 300 34 14 $text ([Drawing.FontStyle]::Bold)))
 $diagLabels=@{}
 $x=18
-foreach($name in @("Python","Git","SQLite","Порты","Watchdog","UTF-8")){
-    $b=P $x 48 165 55 $panel2
+foreach($name in @("Python","Git","SQLite","Порты","Watchdog","Registry","UTF-8")){
+    $b=P $x 48 145 55 $panel2
     $s=L "●" 10 12 28 28 14 $yellow ([Drawing.FontStyle]::Bold)
     $v=L "Проверка..." 44 29 110 20 8.5 $yellow
     $b.Controls.Add($s)
@@ -353,7 +359,7 @@ foreach($name in @("Python","Git","SQLite","Порты","Watchdog","UTF-8")){
     $b.Controls.Add($v)
     $diag.Controls.Add($b)
     $diagLabels[$name]=@($s,$v)
-    $x+=180
+    $x+=155
 }
 
 $corePage=$pages["Ядра"]
@@ -463,6 +469,7 @@ $timer.Add_Tick({
         "SQLite"=(Test-Database)
         "Порты"=(Test-Ports)
         "Watchdog"=(Test-Watchdog)
+        "Registry"=(Test-Registry)
         "UTF-8"=(Test-Utf8)
     }
     foreach($k in $checks.Keys){
