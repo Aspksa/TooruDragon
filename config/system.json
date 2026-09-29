@@ -16,7 +16,18 @@
   "update": {
     "remote": "origin",
     "branch": "main",
-    "strategy": "ff-only"
+    "strategy": "ff-only",
+    "backup_before_update": true,
+    "rollback_on_validation_failure": true,
+    "backup_retention": 10
+  },
+  "backup": {
+    "directory": "backups",
+    "retention": 10
+  },
+  "service_registry": {
+    "heartbeat_seconds": 10,
+    "stale_after_seconds": 35
   },
   "watchdog": {
     "enabled": true,
