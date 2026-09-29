@@ -8,9 +8,17 @@ sys.path.insert(0, str(ROOT))
 
 from core.system import CoreRuntime, Route
 
+CAPABILITIES = [
+    "mobile_client_gateway",
+    "device_synchronization",
+    "session_coordination",
+    "push_integration",
+]
+
 runtime = CoreRuntime(
     "mobile",
     "Мобильное ядро: шлюз, синхронизация устройств и мобильные сессии",
+    capabilities=CAPABILITIES,
 )
 
 
@@ -19,12 +27,7 @@ def info(_request):
         "service": "mobile",
         "host": runtime.host,
         "port": runtime.port,
-        "purpose": [
-            "mobile_client_gateway",
-            "device_synchronization",
-            "session_coordination",
-            "push_integration",
-        ],
+        "purpose": CAPABILITIES,
     }
 
 
