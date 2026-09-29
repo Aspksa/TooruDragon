@@ -10,6 +10,7 @@ from core.system import CoreRuntime, Route
 from core.system.ai_memory import AIMemoryStore
 from core.system.chat_runtime import ChatConfig, ChatRuntime
 from core.system.model_router import ModelProviderError, ModelRouter
+from core.system.rag import RAGIndex
 from core.system.secrets import SecretStore
 
 CAPABILITIES = [
@@ -35,6 +36,12 @@ model_router = ModelRouter(
     ai_cfg.get("model_router", {}),
     secrets=secrets,
 )
+rag_cfg = ai_cfg.get("rag", {})
+rag = RAGIndex(
+    runtime.db,
+    chunk_size=int(rag_cfg.get("chunk_size", 1200)),
+    chunk_overlap=int(rag_cfg.get("chunk_overlap", 150)),
+) if bool(rag_cfg.get("enabled", True)) else None
 chat_runtime = ChatRuntime(
     model_router,
     memory,
@@ -42,8 +49,10 @@ chat_runtime = ChatRuntime(
         system_prompt=str(ai_cfg.get("system_prompt", "")),
         history_limit=int(ai_cfg.get("history_limit", 24)),
         retrieval_limit=int(ai_cfg.get("retrieval_limit", 6)),
+        rag_limit=int(ai_cfg.get("rag_limit", 6)),
         memory_scope=str(ai_cfg.get("memory_scope", "global")),
     ),
+    rag=rag,
 )
 
 
@@ -166,6 +175,70 @@ def memory_remember(request):
     }
 
 
+def rag_ingest(request):
+    if rag is None:
+        return 503, {"error": "rag_disabled"}
+    payload = request.json if isinstance(request.json, dict) else {}
+    text = str(payload.get("text", "")).strip()
+    if not text:
+        return 400, {"error": "text_required"}
+    try:
+        document = rag.ingest(
+            text,
+            title=(
+                str(payload.get("title")).strip()
+                if payload.get("title") is not None
+                else None
+            ),
+            source=str(payload.get("source", "web")),
+            metadata=(
+                payload.get("metadata")
+                if isinstance(payload.get("metadata"), dict)
+                else {}
+            ),
+            document_id=payload.get("document_id"),
+        )
+    except (ValueError, TypeError) as exc:
+        return 400, {"error": "invalid_document", "message": str(exc)}
+
+    return 201, {
+        "service": "tooru_ai",
+        "document": document,
+    }
+
+
+def rag_search(request):
+    if rag is None:
+        return 503, {"error": "rag_disabled"}
+    query = str(request.query.get("q", [""])[0]).strip()
+    if not query:
+        return 400, {"error": "query_required"}
+    raw_limit = request.query.get("limit", ["6"])[0]
+    try:
+        limit = int(raw_limit)
+    except ValueError:
+        return 400, {"error": "invalid_limit"}
+    return 200, {
+        "service": "tooru_ai",
+        "query": query,
+        "chunks": rag.search(query, limit=limit),
+    }
+
+
+def rag_documents(request):
+    if rag is None:
+        return 200, {"service": "tooru_ai", "documents": []}
+    raw_limit = request.query.get("limit", ["100"])[0]
+    try:
+        limit = int(raw_limit)
+    except ValueError:
+        return 400, {"error": "invalid_limit"}
+    return 200, {
+        "service": "tooru_ai",
+        "documents": rag.documents(limit=limit),
+    }
+
+
 def memory_search(request):
     query = str(request.query.get("q", [""])[0]).strip()
     if not query:
@@ -198,4 +271,7 @@ if __name__ == "__main__":
         "/conversation": Route(conversation, protected=True),
         "/memory/remember": Route(memory_remember, method="POST", protected=True),
         "/memory/search": Route(memory_search, protected=True),
+        "/rag/ingest": Route(rag_ingest, method="POST", protected=True),
+        "/rag/search": Route(rag_search, protected=True),
+        "/rag/documents": Route(rag_documents, protected=True),
     })
