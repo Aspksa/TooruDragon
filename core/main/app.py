@@ -16,9 +16,10 @@ PORT = 8700
 
 CORES = {
     "tooru_ai": "http://127.0.0.1:8701/health",
-    "workshop": "http://127.0.0.1:8702/health",
+    "laboratory": "http://127.0.0.1:8702/health",
     "home": "http://127.0.0.1:8703/health",
     "work": "http://127.0.0.1:8704/health",
+    "mobile": "http://127.0.0.1:8705/health",
 }
 
 
