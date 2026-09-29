@@ -25,6 +25,7 @@ listen_host = str(supervisor_cfg.get("host", "127.0.0.1"))
 listen_port = int(supervisor_cfg.get("port", 8699))
 interval = max(2, int(supervisor_cfg.get("interval_seconds", 5)))
 failure_threshold = max(1, int(supervisor_cfg.get("failure_threshold", 3)))
+startup_grace_seconds = max(0, int(supervisor_cfg.get("startup_grace_seconds", 15)))
 safe_mode_file = ROOT / "runtime" / "safe_mode.json"
 
 manager = CoreManager(host=host, cores=cores, root=ROOT)
@@ -67,6 +68,8 @@ def snapshot() -> dict:
 
 
 def recovery_loop() -> None:
+    if startup_grace_seconds:
+        time.sleep(startup_grace_seconds)
     while True:
         if safe_mode():
             time.sleep(interval)
