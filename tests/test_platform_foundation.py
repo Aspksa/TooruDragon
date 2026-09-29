@@ -126,6 +126,54 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(failed["attempts"], 2)
 
 
+    def test_child_waits_for_parent_and_terminal_failure_cascades(self):
+        parent = self.engine.create_task(
+            kind="workflow.parent",
+            payload={},
+            max_attempts=1,
+        )
+        child = self.engine.create_task(
+            kind="workflow.child",
+            payload={},
+            workflow_id=parent["workflow_id"],
+            parent_id=parent["id"],
+        )
+
+        claimed_parent = self.engine.claim(worker_id="worker")
+        self.assertEqual(claimed_parent["id"], parent["id"])
+
+        blocked_child = self.engine.claim(worker_id="other-worker")
+        self.assertIsNone(blocked_child)
+
+        failed_parent = self.engine.fail(
+            parent["id"],
+            "worker",
+            "terminal",
+            retry_delay_seconds=0,
+        )
+        self.assertEqual(failed_parent["state"], "failed")
+        self.assertEqual(self.engine.get(child["id"])["state"], "cancelled")
+
+    def test_child_becomes_claimable_after_parent_completion(self):
+        parent = self.engine.create_task(
+            kind="workflow.parent",
+            payload={},
+        )
+        child = self.engine.create_task(
+            kind="workflow.child",
+            payload={},
+            workflow_id=parent["workflow_id"],
+            parent_id=parent["id"],
+        )
+
+        claimed = self.engine.claim(worker_id="worker")
+        self.engine.mark_running(claimed["id"], "worker")
+        self.engine.complete(claimed["id"], "worker", result={})
+
+        next_task = self.engine.claim(worker_id="worker")
+        self.assertEqual(next_task["id"], child["id"])
+
+
 class EventFabricTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
