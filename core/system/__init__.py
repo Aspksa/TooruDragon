@@ -1,4 +1,4 @@
-from .agent_runtime import AgentRuntime, Tool, ToolRouter
+from .agent_runtime import AgentRuntime, Planner, Tool, ToolRouter
 from .contracts import Envelope, PROTOCOL_VERSION, validate_envelope
 from .core_manager import CoreManager
 from .deployment import Candidate, DeploymentCoordinator
@@ -21,6 +21,7 @@ __all__ = [
     "EventFabric",
     "Observability",
     "PROTOCOL_VERSION",
+    "Planner",
     "PolicyEngine",
     "Request",
     "Route",
