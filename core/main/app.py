@@ -189,6 +189,7 @@ def routes(_request):
             "/events/replay": "Replay durable events",
             "/events/ack": "Подтверждение durable event offset",
             "/events/dlq": "Перенос события в dead-letter queue",
+            "/events/consumers": "Lag и retention-gap durable consumers",
             "/observability": "Метрики и runtime telemetry",
             "/agents/plan": "Capability-gated agent plan submission",
             "/agents/tools": "Список разрешённых tools агента",
@@ -270,6 +271,14 @@ def event_dlq(request):
     except KeyError:
         return 404, {"error": "event_not_found"}
     return 201, {"dead_lettered": event}
+
+
+def event_consumers(_request):
+    return 200, {
+        "service": "main",
+        "consumers": event_bus.consumers(),
+        "event_fabric": event_bus.stats(),
+    }
 
 
 def observability_status(_request):
@@ -677,6 +686,7 @@ if __name__ == "__main__":
         "/events/replay": Route(event_replay, protected=True),
         "/events/ack": Route(event_ack, method="POST", protected=True),
         "/events/dlq": Route(event_dlq, method="POST", protected=True),
+        "/events/consumers": Route(event_consumers, protected=True),
         "/observability": Route(observability_status, protected=True),
         "/agents/plan": Route(agent_plan, method="POST", protected=True),
         "/agents/tools": Route(agent_tools, protected=True),
