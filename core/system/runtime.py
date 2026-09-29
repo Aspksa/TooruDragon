@@ -1,7 +1,13 @@
 from __future__ import annotations
 
 from .auth import AuthService
-from .config import core_address, cores_config, system_config, version
+from .config import (
+    core_address,
+    core_display_name,
+    core_version,
+    cores_config,
+    system_config,
+)
 from .database import Database
 from .logging import get_logger
 from .server import Request, Route, run_server
@@ -11,7 +17,8 @@ class CoreRuntime:
     def __init__(self, name: str, role: str):
         self.name = name
         self.role = role
-        self.version = version()
+        self.version = core_version(name)
+        self.display_name = core_display_name(name)
         self.host, self.port = core_address(name)
         self.config = system_config()
 
@@ -31,6 +38,7 @@ class CoreRuntime:
     def health(self, _request: Request):
         return 200, {
             "service": self.name,
+            "display_name": self.display_name,
             "version": self.version,
             "status": "ok",
             "role": self.role,
@@ -39,6 +47,7 @@ class CoreRuntime:
     def system_info(self, _request: Request):
         return 200, {
             "service": self.name,
+            "display_name": self.display_name,
             "version": self.version,
             "host": self.host,
             "port": self.port,
