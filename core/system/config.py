@@ -56,4 +56,4 @@ def core_display_name(name: str) -> str:
 
 
 def version() -> str:
-    return str(system_config().get("version", "0.1.0-alpha"))
+    return str(system_config().get("version", "0.3.0"))
