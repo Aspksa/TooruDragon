@@ -413,6 +413,7 @@ $folder.Add_Click({Start-Process explorer.exe $Root})
 $box.Controls.Add($folder)
 
 $script:lastAllOk=$false
+$script:corePrevious=@{}
 $timer=New-Object Windows.Forms.Timer
 $timer.Interval=1600
 $timer.Add_Tick({
@@ -421,6 +422,7 @@ $timer.Add_Tick({
     $allOk=$true
     foreach($c in $cores){
         $h=Test-Core $c.Port
+        $isUp=[bool]$h
         if($h){
             $statusLabels[$c.Key].Text="● Работает"
             $statusLabels[$c.Key].ForeColor=$green
@@ -430,6 +432,11 @@ $timer.Add_Tick({
             $statusLabels[$c.Key].ForeColor=$red
             $allOk=$false
         }
+        if($script:corePrevious.ContainsKey($c.Key)){
+            if($script:corePrevious[$c.Key] -and -not $isUp){Notify "Ядро отключилось" ("{0} перестало отвечать. Watchdog попробует восстановить его." -f $c.Name)}
+            if((-not $script:corePrevious[$c.Key]) -and $isUp){Notify "Ядро восстановлено" ("{0} снова работает." -f $c.Name)}
+        }
+        $script:corePrevious[$c.Key]=$isUp
     }
     if($allOk -and -not $script:lastAllOk){Notify "TooruDragon" "Все ядра работают стабильно. ♡"}
     $script:lastAllOk=$allOk
