@@ -31,8 +31,18 @@ class EventBus:
             trace_id=trace_id,
         )
 
-    def recent(self, limit: int = 50, topic: str | None = None) -> list[dict]:
-        return self.fabric.recent(limit=limit, topic=topic)
+    def recent(
+        self,
+        limit: int = 50,
+        topic: str | None = None,
+        *,
+        after_sequence: int | None = None,
+    ) -> list[dict]:
+        return self.fabric.recent(
+            limit=limit,
+            topic=topic,
+            after_sequence=after_sequence,
+        )
 
     def replay(
         self,
