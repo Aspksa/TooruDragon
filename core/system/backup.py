@@ -34,7 +34,15 @@ class BackupManager:
         source = self.data_dir / "toorudragon.db"
         if not source.exists():
             return
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(source, timeout=10) as src:
+            with sqlite3.connect(destination, timeout=10) as dst:
+                src.backup(dst)
 
+    def _restore_database(self, source: Path) -> None:
+        if not source.exists():
+            return
+        destination = self.data_dir / "toorudragon.db"
         destination.parent.mkdir(parents=True, exist_ok=True)
         with sqlite3.connect(source, timeout=10) as src:
             with sqlite3.connect(destination, timeout=10) as dst:
@@ -63,7 +71,6 @@ class BackupManager:
             json.dumps(manifest, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-
         logger.info("Backup created: %s", target)
         return target
 
@@ -97,11 +104,7 @@ class BackupManager:
                 if item.is_file():
                     shutil.copy2(item, self.config_dir / item.name)
 
-        db_source = backup_path / "data" / "toorudragon.db"
-        if db_source.exists():
-            self.data_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(db_source, self.data_dir / "toorudragon.db")
-
+        self._restore_database(backup_path / "data" / "toorudragon.db")
         logger.warning("Backup restored: %s", backup_path)
         return True
 
