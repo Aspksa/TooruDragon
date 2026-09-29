@@ -117,6 +117,7 @@ class WorkflowEngine:
         worker_id: str,
         lease_seconds: int = 60,
         kinds: list[str] | None = None,
+        allowed_capabilities: set[str] | None = None,
     ) -> dict | None:
         if not worker_id.strip():
             raise ValueError("worker_id is required")
@@ -135,6 +136,15 @@ class WorkflowEngine:
             placeholders = ",".join("?" for _ in kinds)
             where += f" AND kind IN ({placeholders})"
             params.extend(kinds)
+
+        if allowed_capabilities is not None:
+            capabilities = sorted(allowed_capabilities)
+            if capabilities:
+                placeholders = ",".join("?" for _ in capabilities)
+                where += f" AND (required_capability IS NULL OR required_capability IN ({placeholders}))"
+                params.extend(capabilities)
+            else:
+                where += " AND required_capability IS NULL"
 
         with self.db.connect() as db:
             db.execute("BEGIN IMMEDIATE")
