@@ -111,6 +111,16 @@ try{$webRunning=[bool](Get-NetTCPConnection -LocalPort 8710 -State Listen -Error
 $gatewayRunning=Health 8698
 $supervisorRunning=Health 8699
 
+$gatewayConfigured=$false
+$supervisorConfigured=$false
+try{
+    $systemConfig=Get-Content (Join-Path $Root "config\system.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+    if($systemConfig.gateway){$gatewayConfigured=[bool]$systemConfig.gateway.enabled}
+    if($systemConfig.supervisor){$supervisorConfigured=[bool]$systemConfig.supervisor.enabled}
+}catch{}
+$gatewayShouldRun=($gatewayRunning -or $gatewayConfigured)
+$supervisorShouldRun=($supervisorRunning -or $supervisorConfigured)
+
 $changedRaw=& git diff --name-only $PreviousHead $CurrentHead
 $changed=@($changedRaw | ForEach-Object {$_.Trim().Replace("\","/")} | Where-Object {$_})
 Write-Host ("[UPDATE] Изменено файлов: {0}" -f $changed.Count) -ForegroundColor Cyan
@@ -142,10 +152,9 @@ foreach($s in ($targets | Where-Object {$_.Key -ne "main"})){
     if(-not(BlueGreen-Restart $s $running[$s.Key])){$failed=$true;break}
 }
 
-if((-not $failed) -and $gatewayChanged -and $gatewayRunning){
-    Write-Host "[UPDATE] Перезапуск Gateway" -ForegroundColor Cyan
-    Stop-Port 8698
-    Start-Sleep -Milliseconds 300
+if((-not $failed) -and $gatewayShouldRun -and ($gatewayChanged -or -not(Health 8698))){
+    Write-Host "[UPDATE] Запуск/перезапуск Gateway" -ForegroundColor Cyan
+    if(Health 8698){Stop-Port 8698;Start-Sleep -Milliseconds 300}
     Start-Service "gateway\app.py"
     if(-not(Wait-Up 8698 12)){$failed=$true}
 }
@@ -162,10 +171,9 @@ if(-not $failed){
     if($mainTarget){if(-not(Restart-Core $mainTarget.Name $mainTarget.Port $mainTarget.Path $running["main"])){$failed=$true}}
 }
 
-if((-not $failed) -and $supervisorChanged -and $supervisorRunning){
-    Write-Host "[UPDATE] Перезапуск External Supervisor" -ForegroundColor Cyan
-    Stop-Port 8699
-    Start-Sleep -Milliseconds 300
+if((-not $failed) -and $supervisorShouldRun -and ($supervisorChanged -or -not(Health 8699))){
+    Write-Host "[UPDATE] Запуск/перезапуск External Supervisor" -ForegroundColor Cyan
+    if(Health 8699){Stop-Port 8699;Start-Sleep -Milliseconds 300}
     Start-Service "supervisor\app.py"
     if(-not(Wait-Up 8699 12)){$failed=$true}
 }
@@ -179,8 +187,8 @@ if(-not $failed){
             break
         }
     }
-    if((-not $failed) -and $gatewayRunning -and -not(Health 8698)){$failed=$true;Write-Host "[ERROR] Gateway не отвечает после обновления." -ForegroundColor Red}
-    if((-not $failed) -and $supervisorRunning -and -not(Health 8699)){$failed=$true;Write-Host "[ERROR] Supervisor не отвечает после обновления." -ForegroundColor Red}
+    if((-not $failed) -and $gatewayShouldRun -and -not(Health 8698)){$failed=$true;Write-Host "[ERROR] Gateway не отвечает после обновления." -ForegroundColor Red}
+    if((-not $failed) -and $supervisorShouldRun -and -not(Health 8699)){$failed=$true;Write-Host "[ERROR] Supervisor не отвечает после обновления." -ForegroundColor Red}
     if(-not $failed){
         & $Python "scripts\finalize_update.py" --success
         Write-Host "[UPDATE] Rolling update завершён успешно. Состояние сервисов сохранено." -ForegroundColor Green
