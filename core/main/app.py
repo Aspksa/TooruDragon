@@ -212,14 +212,20 @@ def routes(_request):
 def events(request):
     topic = request.query.get("topic", [None])[0]
     raw_limit = request.query.get("limit", ["50"])[0]
+    raw_after = request.query.get("after_sequence", [None])[0]
     try:
         limit = int(raw_limit)
+        after_sequence = int(raw_after) if raw_after not in (None, "") else None
     except ValueError:
-        limit = 50
+        return 400, {"error": "invalid_event_query"}
 
     return 200, {
         "service": "main",
-        "events": event_bus.recent(limit=limit, topic=topic),
+        "events": event_bus.recent(
+            limit=limit,
+            topic=topic,
+            after_sequence=after_sequence,
+        ),
     }
 
 
