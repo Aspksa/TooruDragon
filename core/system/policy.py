@@ -36,6 +36,16 @@ class PolicyEngine:
         default = str(self.policies.get("_default", "deny")).lower()
         return Decision(default == "allow", f"default_{default}")
 
+    def allowed_capabilities(self, subject: str) -> set[str]:
+        subject_policy = self.policies.get(subject, {})
+        if isinstance(subject_policy, list):
+            return set(subject_policy)
+        if isinstance(subject_policy, dict):
+            allowed = set(subject_policy.get("allow", []))
+            denied = set(subject_policy.get("deny", []))
+            return allowed - denied
+        return set()
+
     def require(self, subject: str, capability: str) -> None:
         decision = self.decide(subject, capability)
         if not decision.allowed:
