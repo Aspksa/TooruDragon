@@ -1,0 +1,21 @@
+{
+  "version": "0.1.0-alpha",
+  "database": {
+    "engine": "sqlite",
+    "path": "data/toorudragon.db"
+  },
+  "auth": {
+    "required": false,
+    "token_env": "TOORUDRAGON_API_TOKEN"
+  },
+  "logging": {
+    "directory": "logs",
+    "rotation_bytes": 2000000,
+    "backup_count": 5
+  },
+  "update": {
+    "remote": "origin",
+    "branch": "main",
+    "strategy": "ff-only"
+  }
+}
