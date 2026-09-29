@@ -48,6 +48,8 @@ GET_ALLOWLIST = {
         "/conversations",
         "/conversation",
         "/memory/search",
+        "/rag/search",
+        "/rag/documents",
     ),
     "supervisor": (
         "/health",
@@ -75,6 +77,7 @@ POST_ALLOWLIST = {
     "tooru_ai": (
         "/chat",
         "/memory/remember",
+        "/rag/ingest",
     ),
     "supervisor": (
         "/core/action",
