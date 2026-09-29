@@ -49,5 +49,8 @@ class EventBus:
     def dead_letter(self, event_id: str, consumer: str, error: str) -> dict:
         return self.fabric.dead_letter(event_id, consumer, error)
 
+    def consumers(self) -> list[dict]:
+        return self.fabric.consumer_status()
+
     def stats(self) -> dict:
         return self.fabric.stats()
