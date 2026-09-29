@@ -144,6 +144,9 @@ class CoreManager:
         except Exception:
             self.logger.exception("Failed to record core action: %s %s", name, action)
 
+    def is_online(self, name: str) -> bool:
+        return bool(self._health(name).get("online"))
+
     def status(self, name: str) -> dict:
         entry = self._entry(name)
         health = self._health(name)
