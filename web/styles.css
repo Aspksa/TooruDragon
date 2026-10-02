@@ -349,3 +349,35 @@ canvas{width:100%;display:block}
 
 .document-failure-list{display:grid;gap:8px;max-height:260px;overflow:auto}
 .document-failure-list .document-issue small{display:block;color:var(--muted);margin-top:6px;font-size:9px}
+
+
+/* Garage / GСM */
+.garage-driver-directory{display:grid;gap:8px;margin-top:14px;max-height:320px;overflow:auto}
+.garage-driver-row{
+  display:grid;grid-template-columns:minmax(0,1.4fr) minmax(120px,.8fr) minmax(150px,1fr);
+  gap:10px;align-items:center;border:1px solid var(--line);border-radius:12px;
+  padding:10px 12px;background:rgba(255,255,255,.025)
+}
+.garage-driver-row small,.garage-driver-row span{display:block;color:var(--muted);font-size:9px}
+.garage-driver-row strong{font-size:11px}
+.garage-waybill-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+.garage-fuel-kpis{grid-template-columns:repeat(6,minmax(0,1fr))}
+.garage-unresolved-card{
+  border:1px solid var(--line);border-left:3px solid var(--yellow);
+  border-radius:11px;padding:10px 12px;background:rgba(255,213,106,.04)
+}
+.garage-unresolved-card small{display:block;color:var(--muted);font-size:9px;margin-top:5px}
+.garage-statement-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
+.garage-statement-meta span{
+  padding:3px 6px;border:1px solid var(--line);border-radius:7px;
+  color:var(--muted);font-size:9px;background:rgba(255,255,255,.025)
+}
+@media(max-width:1150px){
+  .garage-fuel-kpis{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .garage-waybill-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:760px){
+  .garage-driver-row{grid-template-columns:1fr}
+  .garage-fuel-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .garage-waybill-grid{grid-template-columns:1fr}
+}
