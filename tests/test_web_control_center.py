@@ -23,6 +23,8 @@ class WebControlCenterProxyTests(unittest.TestCase):
         self.assertTrue(_allowed("GET", "tooru_ai", "/rag/documents"))
         self.assertTrue(_allowed("GET", "work", "/timesheet/summary?month=2026-10"))
         self.assertTrue(_allowed("GET", "work", "/timesheet/calendar?month=2026-10"))
+        self.assertTrue(_allowed("GET", "work", "/timesheet/overtime?month=2026-10"))
+        self.assertTrue(_allowed("GET", "work", "/timesheet/custom-columns"))
         self.assertTrue(_allowed("GET", "main", "/api/task/transitions?task_id=abc"))
 
     def test_control_actions_are_explicitly_allowlisted(self):
@@ -35,6 +37,7 @@ class WebControlCenterProxyTests(unittest.TestCase):
         self.assertTrue(_allowed("POST", "tooru_ai", "/rag/ingest"))
         self.assertTrue(_allowed("POST", "work", "/timesheet/employee/save"))
         self.assertTrue(_allowed("POST", "work", "/timesheet/entry/save"))
+        self.assertTrue(_allowed("POST", "work", "/timesheet/custom-column/save"))
 
     def test_arbitrary_local_proxying_is_rejected(self):
         self.assertFalse(_allowed("GET", "main", "/system"))
