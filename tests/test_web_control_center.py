@@ -38,6 +38,14 @@ class WebControlCenterProxyTests(unittest.TestCase):
         self.assertTrue(_allowed("GET", "work", "/garage/fuel/statements"))
         self.assertTrue(_allowed("GET", "work", "/garage/fuel/summary?month=2026-06"))
         self.assertTrue(_allowed("GET", "work", "/garage/fuel/unresolved?month=2026-06"))
+        self.assertTrue(_allowed("GET", "work", "/waybills/status"))
+        self.assertTrue(_allowed("GET", "work", "/waybills/batches?limit=30"))
+        self.assertTrue(_allowed("GET", "work", "/waybills?needs_review=true"))
+        self.assertTrue(_allowed("GET", "work", "/waybills/get?id=abc"))
+        self.assertTrue(_allowed("GET", "work", "/waybills/monthly-mileage?month=2026-09"))
+        self.assertTrue(_allowed("GET", "work", "/waybills/overtime?month=2026-09"))
+        self.assertTrue(_allowed("GET", "work", "/waybills/overtime/summary?month=2026-09"))
+        self.assertTrue(_allowed("GET", "work", "/timesheet/schedules"))
         self.assertTrue(_allowed("GET", "main", "/api/task/transitions?task_id=abc"))
 
     def test_control_actions_are_explicitly_allowlisted(self):
@@ -61,6 +69,11 @@ class WebControlCenterProxyTests(unittest.TestCase):
         self.assertTrue(_allowed("POST", "work", "/garage/driver-vehicle/assign"))
         self.assertTrue(_allowed("POST", "work", "/garage/waybill/save"))
         self.assertTrue(_allowed("POST", "work", "/garage/fuel/reconcile"))
+        self.assertTrue(_allowed("POST", "work", "/waybills/batch/upload-chunk"))
+        self.assertTrue(_allowed("POST", "work", "/waybills/field/correct"))
+        self.assertTrue(_allowed("POST", "work", "/waybills/confirm"))
+        self.assertTrue(_allowed("POST", "work", "/waybills/overtime/review"))
+        self.assertTrue(_allowed("POST", "work", "/timesheet/schedule/save"))
 
     def test_arbitrary_local_proxying_is_rejected(self):
         self.assertFalse(_allowed("GET", "main", "/system"))
@@ -141,6 +154,18 @@ class WebControlCenterProxyTests(unittest.TestCase):
         self.assertIn("async function loadGarage()", script)
         self.assertIn("/api/work/garage/fuel/summary", script)
 
+    def test_waybill_batch_and_overtime_review_ui_are_present(self):
+        html = (Path(ROOT) / "index.html").read_text(encoding="utf-8")
+        script = (Path(ROOT) / "app.js").read_text(encoding="utf-8")
+        self.assertIn('id="waybill-batch-file"', html)
+        self.assertIn('id="waybill-review-list"', html)
+        self.assertIn('id="waybill-overtime-candidates"', html)
+        self.assertIn('id="ts-employee-workday-start"', html)
+        self.assertIn("async function uploadWaybillBatch()", script)
+        self.assertIn("async function reviewWaybillOvertime", script)
+        self.assertIn("/api/work/waybills/batch/upload-chunk", script)
+        self.assertIn("/api/work/waybills/overtime/review", script)
+
     def test_machine_report_includes_document_intelligence(self):
         calls = []
 
@@ -161,6 +186,13 @@ class WebControlCenterProxyTests(unittest.TestCase):
         self.assertIn("work.garage_fuel_statements", report["snapshot"])
         self.assertIn("work.garage_fuel_summary", report["snapshot"])
         self.assertIn("work.garage_fuel_unresolved", report["snapshot"])
+        self.assertIn("work.waybill_status", report["snapshot"])
+        self.assertIn("work.waybill_batches", report["snapshot"])
+        self.assertIn("work.waybill_review", report["snapshot"])
+        self.assertIn("work.waybill_monthly_mileage", report["snapshot"])
+        self.assertIn("work.waybill_overtime", report["snapshot"])
+        self.assertIn("work.waybill_overtime_summary", report["snapshot"])
+        self.assertIn("work.employee_schedules", report["snapshot"])
 
 
 if __name__ == "__main__":
