@@ -226,9 +226,16 @@ def _ensure_waybill_indexes(db: sqlite3.Connection) -> None:
         )
 
 
+def _ensure_vehicle_extensions(db: sqlite3.Connection) -> None:
+    columns = {item["name"] for item in _table_columns(db, "garage_vehicles")}
+    if columns and "tank_capacity_l" not in columns:
+        db.execute("ALTER TABLE garage_vehicles ADD COLUMN tank_capacity_l REAL")
+
+
 def apply_migrations(db: sqlite3.Connection) -> list[str]:
     """Apply narrow, idempotent SQLite migrations after schema bootstrap."""
     applied: list[str] = []
+    _ensure_vehicle_extensions(db)
     if _needs_waybill_rebuild(db):
         db.execute("PRAGMA foreign_keys=OFF")
         try:
