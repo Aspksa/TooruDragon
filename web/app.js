@@ -14,6 +14,12 @@ const state = {
   selectedWorkflow: null,
   latencyHistory: [],
   aiConversationId: null,
+  timesheet: {
+    employees: [],
+    calendar: null,
+    summary: null,
+    anomalies: [],
+  },
 };
 
 const coreNames = {
@@ -735,6 +741,199 @@ function updateConnection() {
   $("#conn-text").textContent = ok ? "Control Plane подключён" : "Есть недоступные компоненты";
 }
 
+
+function defaultTimesheetMonth() {
+  return new Date().toISOString().slice(0,7);
+}
+
+function ensureTimesheetDefaults() {
+  const month = $("#timesheet-month");
+  if (month && !month.value) month.value = defaultTimesheetMonth();
+  const workDate = $("#ts-entry-date");
+  if (workDate && !workDate.value) workDate.value = new Date().toISOString().slice(0,10);
+}
+
+function renderTimesheetMatrix(calendarData) {
+  const table = $("#timesheet-matrix");
+  if (!table) return;
+  const days = calendarData?.days || [];
+  const rows = calendarData?.rows || [];
+  if (!rows.length) {
+    table.innerHTML = '<tbody><tr><td class="empty">Добавьте сотрудников, чтобы появился табель.</td></tr></tbody>';
+    return;
+  }
+  const head = '<thead><tr><th class="ts-person">Сотрудник</th>' +
+    days.map(day => '<th class="'+(day.weekend?'ts-weekend':'')+'">'+escapeHtml(day.day)+'</th>').join('') +
+    '</tr></thead>';
+  const body = rows.map(row => {
+    const person = row.employee;
+    const cells = row.days.map(cell => {
+      const entry = cell.entry;
+      const classes = [
+        'ts-cell',
+        cell.weekend ? 'ts-weekend' : '',
+        cell.missing ? 'ts-missing' : '',
+        entry ? 'ts-filled' : '',
+      ].filter(Boolean).join(' ');
+      const code = entry ? (entry.status_code || entry.status || '') : (cell.missing ? '·' : '');
+      const hours = entry && Number(entry.actual_hours) ? '<small>'+escapeHtml(entry.actual_hours)+'</small>' : '';
+      const title = entry
+        ? (entry.work_date+' · '+(entry.status_code||entry.status)+' · '+entry.actual_hours+' ч')
+        : (cell.missing ? 'Нет записи за плановый день' : cell.date);
+      return '<td class="'+classes+'" data-ts-cell="1" data-employee-id="'+escapeHtml(person.id)+
+        '" data-work-date="'+escapeHtml(cell.date)+'" title="'+escapeHtml(title)+'"><span>'+escapeHtml(code)+'</span>'+hours+'</td>';
+    }).join('');
+    return '<tr><th class="ts-person"><strong>'+escapeHtml(person.full_name)+'</strong><small>№ '+escapeHtml(person.personnel_number)+'</small></th>'+cells+'</tr>';
+  }).join('');
+  table.innerHTML = head + '<tbody>'+body+'</tbody>';
+}
+
+function renderTimesheetSummary(summary) {
+  const totals = summary?.totals || {};
+  $("#ts-metric-employees").textContent = totals.employees ?? 0;
+  $("#ts-metric-planned").textContent = totals.planned_hours ?? 0;
+  $("#ts-metric-actual").textContent = totals.actual_hours ?? 0;
+  $("#ts-metric-overtime").textContent = totals.overtime_hours ?? 0;
+  $("#ts-metric-missing").textContent = totals.missing_days ?? 0;
+  $("#ts-metric-anomalies").textContent = totals.anomalies ?? 0;
+
+  const rows = summary?.employees || [];
+  $("#timesheet-summary-body").innerHTML = rows.map(item => {
+    const balance = Number(item.balance_hours || 0);
+    return '<tr>'+
+      '<td><strong>'+escapeHtml(item.employee.full_name)+'</strong><br><span class="muted">№ '+escapeHtml(item.employee.personnel_number)+'</span></td>'+
+      '<td>'+escapeHtml(item.planned_norm_hours)+'</td>'+
+      '<td>'+escapeHtml(item.actual_hours)+'</td>'+
+      '<td class="'+(balance<0?'ts-negative':balance>0?'ts-positive':'')+'">'+escapeHtml(balance)+'</td>'+
+      '<td>'+escapeHtml(item.overtime_hours)+'</td>'+
+      '<td>'+escapeHtml(item.night_hours)+'</td>'+
+      '<td>'+escapeHtml(item.missing_days)+'</td>'+
+    '</tr>';
+  }).join('') || '<tr><td colspan="7" class="empty">Нет сотрудников</td></tr>';
+}
+
+function renderTimesheetAnomalies(items) {
+  $("#timesheet-anomaly-badge").textContent = items.length;
+  $("#timesheet-anomaly-badge").className = "status-pill " + (items.length ? "" : "online");
+  $("#timesheet-anomalies").innerHTML = items.map(item => {
+    const severity = item.severity || 'info';
+    return '<div class="ts-anomaly '+escapeHtml(severity)+'">'+
+      '<div><strong>'+escapeHtml(item.full_name)+'</strong>'+
+      (item.date ? ' · '+escapeHtml(item.date) : '')+'</div>'+
+      '<div class="subtitle">'+escapeHtml(item.message || item.type)+'</div>'+
+    '</div>';
+  }).join('') || '<div class="empty">Тоору не нашла проблем в табеле за выбранный месяц.</div>';
+}
+
+function renderTimesheetEmployees(items) {
+  state.timesheet.employees = items || [];
+  const select = $("#ts-entry-employee");
+  if (!select) return;
+  const current = select.value;
+  select.innerHTML = state.timesheet.employees.map(item =>
+    '<option value="'+escapeHtml(item.id)+'">№ '+escapeHtml(item.personnel_number)+' · '+escapeHtml(item.full_name)+'</option>'
+  ).join('') || '<option value="">Сначала добавьте сотрудника</option>';
+  if (current && state.timesheet.employees.some(item=>item.id===current)) select.value = current;
+}
+
+async function loadTimesheet() {
+  ensureTimesheetDefaults();
+  const month = $("#timesheet-month")?.value || defaultTimesheetMonth();
+  try {
+    const [employeesData, calendarData, summaryData, anomalyData] = await Promise.all([
+      api("/api/work/timesheet/employees?active=true"),
+      api("/api/work/timesheet/calendar?month="+encodeURIComponent(month)),
+      api("/api/work/timesheet/summary?month="+encodeURIComponent(month)),
+      api("/api/work/timesheet/anomalies?month="+encodeURIComponent(month)),
+    ]);
+    renderTimesheetEmployees(employeesData.employees || []);
+    state.timesheet.calendar = calendarData.calendar || null;
+    state.timesheet.summary = summaryData.summary || null;
+    state.timesheet.anomalies = anomalyData.anomalies || [];
+    renderTimesheetMatrix(state.timesheet.calendar);
+    renderTimesheetSummary(state.timesheet.summary);
+    renderTimesheetAnomalies(state.timesheet.anomalies);
+  } catch (e) {
+    toast("Табель: "+e.message, true);
+  }
+}
+
+async function saveTimesheetEmployee() {
+  const body = {
+    personnel_number: $("#ts-employee-number").value.trim(),
+    full_name: $("#ts-employee-name").value.trim(),
+    department: $("#ts-employee-department").value.trim(),
+    position: $("#ts-employee-position").value.trim(),
+    schedule_type: $("#ts-employee-schedule").value.trim() || "5/2",
+    weekly_hours: Number($("#ts-employee-weekly").value || 40),
+    active: true,
+  };
+  try {
+    await api("/api/work/timesheet/employee/save", {
+      method:"POST",
+      body:JSON.stringify(body),
+    });
+    $("#ts-employee-number").value = "";
+    $("#ts-employee-name").value = "";
+    toast("Сотрудник добавлен в табель");
+    await loadTimesheet();
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+async function saveTimesheetEntry() {
+  const employeeId = $("#ts-entry-employee").value;
+  if (!employeeId) {
+    toast("Сначала добавьте сотрудника", true);
+    return;
+  }
+  const body = {
+    employee_id: employeeId,
+    work_date: $("#ts-entry-date").value,
+    status: $("#ts-entry-status").value,
+    planned_hours: Number($("#ts-entry-planned").value || 0),
+    actual_hours: Number($("#ts-entry-actual").value || 0),
+    overtime_hours: Number($("#ts-entry-overtime").value || 0),
+    night_hours: Number($("#ts-entry-night").value || 0),
+    note: $("#ts-entry-note").value.trim(),
+    source: "web",
+  };
+  try {
+    await api("/api/work/timesheet/entry/save", {
+      method:"POST",
+      body:JSON.stringify(body),
+    });
+    toast("День табеля сохранён");
+    await loadTimesheet();
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+function openTimesheetCell(employeeId, workDate) {
+  const row = state.timesheet.calendar?.rows?.find(item=>item.employee.id===employeeId);
+  const cell = row?.days?.find(item=>item.date===workDate);
+  if (!cell) return;
+  $("#ts-entry-employee").value = employeeId;
+  $("#ts-entry-date").value = workDate;
+  if (cell.entry) {
+    $("#ts-entry-status").value = cell.entry.status || "work";
+    $("#ts-entry-planned").value = cell.entry.planned_hours ?? cell.planned_default ?? 0;
+    $("#ts-entry-actual").value = cell.entry.actual_hours ?? 0;
+    $("#ts-entry-overtime").value = cell.entry.overtime_hours ?? 0;
+    $("#ts-entry-night").value = cell.entry.night_hours ?? 0;
+    $("#ts-entry-note").value = cell.entry.note || "";
+  } else {
+    $("#ts-entry-status").value = "work";
+    $("#ts-entry-planned").value = cell.planned_default ?? 0;
+    $("#ts-entry-actual").value = cell.planned_default ?? 0;
+    $("#ts-entry-overtime").value = 0;
+    $("#ts-entry-night").value = 0;
+    $("#ts-entry-note").value = "";
+  }
+}
+
 function showPage(name) {
   state.activePage = name;
   $$(".page").forEach(p=>p.classList.toggle("active",p.dataset.page===name));
@@ -746,6 +945,7 @@ function showPage(name) {
     workflow:["Workflow","Граф зависимостей durable-задач"],
     events:["События","Durable Event Fabric · live SSE"],
     agent:["Agent Console","Tool Router, Planner и execution transcript"],
+    timesheet:["Табель","Рабочее время, нормы, фактические часы и контроль отклонений"],
     control:["Control Plane","Supervisor, Gateway, deployments и consumers"],
     audit:["Audit","Lifecycle, events и consumer integrity"],
   };
@@ -755,6 +955,7 @@ function showPage(name) {
   if(name==="workflow") loadWorkflow();
   if(name==="events") loadEvents();
   if(name==="agent") { loadAgent(); loadAIRuntime(); loadRAGDocuments(); }
+  if(name==="timesheet") loadTimesheet();
   if(name==="control") loadControlPlane();
   if(name==="audit") loadAudit();
   if(innerWidth<760) $("#sidebar").classList.remove("open");
@@ -767,6 +968,7 @@ $("#refresh").addEventListener("click",async()=>{
   if(state.activePage==="tasks") await loadTasks();
   if(state.activePage==="workflow") await loadWorkflow();
   if(state.activePage==="events") await loadEvents();
+  if(state.activePage==="timesheet") await loadTimesheet();
   if(state.activePage==="control") await loadControlPlane();
   if(state.activePage==="audit") await loadAudit();
   toast("Данные обновлены");
@@ -776,6 +978,11 @@ document.addEventListener("click", event => {
   const coreButton = event.target.closest("[data-core-action]");
   if (coreButton) {
     coreAction(coreButton.dataset.core, coreButton.dataset.coreAction);
+    return;
+  }
+  const timesheetCell = event.target.closest("[data-ts-cell]");
+  if (timesheetCell) {
+    openTimesheetCell(timesheetCell.dataset.employeeId, timesheetCell.dataset.workDate);
     return;
   }
   const deploymentButton = event.target.closest("[data-deployment-action]");
@@ -789,6 +996,10 @@ $("#safe-mode-disable").addEventListener("click",()=>setSafeMode(false));
 $("#tasks-refresh").addEventListener("click",loadTasks);
 $("#task-create").addEventListener("click",createTask);
 $("#events-refresh").addEventListener("click",loadEvents);
+$("#timesheet-refresh").addEventListener("click",loadTimesheet);
+$("#timesheet-month").addEventListener("change",loadTimesheet);
+$("#ts-employee-save").addEventListener("click",saveTimesheetEmployee);
+$("#ts-entry-save").addEventListener("click",saveTimesheetEntry);
 $("#agent-id").addEventListener("input",loadAgent);
 $("#agent-tool-invoke").addEventListener("click",invokeAgentTool);
 $("#agent-plan-submit").addEventListener("click",submitPlan);
