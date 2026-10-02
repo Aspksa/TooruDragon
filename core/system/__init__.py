@@ -2,6 +2,7 @@ from .rag import RAGIndex
 from .ai_memory import AIMemoryStore
 from .chat_runtime import ChatConfig, ChatRuntime
 from .reasoning import HybridReasoningEngine, ReasoningConfig, ReasoningDecision
+from .reasoning_learning import AdaptiveReasoningStore
 from .model_router import ModelProviderError, ModelRouter
 from .agent_runtime import AgentRuntime, Planner, Tool, ToolRouter
 from .contracts import Envelope, PROTOCOL_VERSION, validate_envelope
@@ -24,6 +25,7 @@ __all__ = [
     "ChatConfig",
     "AIMemoryStore",
     "HybridReasoningEngine",
+    "AdaptiveReasoningStore",
     "ReasoningConfig",
     "ReasoningDecision",
     "Candidate",
