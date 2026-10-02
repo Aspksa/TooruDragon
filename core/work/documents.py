@@ -33,12 +33,16 @@ PLATE_RE = re.compile(
     re.IGNORECASE,
 )
 REFERENCE_RE = re.compile(
-    r"\b(договор|контракт|приказ|акт|сч[её]т(?:-оферта)?)"
+    r"\b(договор|контракт)(?:а|у|ом|е)?"
+    r"(?![А-Яа-яЁё])\s*(?:№|N|номер)?\s*"
+    r"([A-ZА-ЯЁ0-9][A-ZА-ЯЁ0-9./_-]{0,40})"
+    r"|\b(приказ|акт|сч[её]т(?:-оферта)?)"
     r"\s*(?:№|N|номер)?\s*([A-ZА-ЯЁ0-9][A-ZА-ЯЁ0-9./_-]{0,40})",
     re.IGNORECASE,
 )
 CONTRACT_REFERENCE_RE = re.compile(
-    r"\b(?:договор|контракт)\s*(?:№|N|номер)?\s*"
+    r"\b(?:договор|контракт)(?:а|у|ом|е)?"
+    r"(?![А-Яа-яЁё])\s*(?:№|N|номер)?\s*"
     r"([A-ZА-ЯЁ0-9][A-ZА-ЯЁ0-9./_-]{0,40})",
     re.IGNORECASE,
 )
@@ -1184,10 +1188,12 @@ class DocumentIntelligenceService:
             )
 
         for match in REFERENCE_RE.finditer(text):
-            value = f"{match.group(1)} {match.group(2)}"
+            reference_type = match.group(1) or match.group(3)
+            reference_number = match.group(2) or match.group(4)
+            value = f"{reference_type} {reference_number}"
             add(
                 "reference",
-                match.group(1).lower().replace("ё", "е"),
+                reference_type.lower().replace("ё", "е"),
                 value,
                 match.start(),
                 match.end(),
