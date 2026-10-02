@@ -504,9 +504,9 @@ ON garage_driver_vehicle_assignments(vehicle_id, active, valid_from, valid_to);
 CREATE TABLE IF NOT EXISTS garage_waybills (
     id TEXT PRIMARY KEY,
     waybill_number TEXT NOT NULL DEFAULT '',
-    trip_date TEXT NOT NULL,
-    employee_id TEXT NOT NULL,
-    vehicle_id TEXT NOT NULL,
+    trip_date TEXT,
+    employee_id TEXT,
+    vehicle_id TEXT,
     odometer_start REAL,
     odometer_end REAL,
     distance_km REAL NOT NULL DEFAULT 0,
@@ -518,16 +518,44 @@ CREATE TABLE IF NOT EXISTS garage_waybills (
     norm_consumption_l REAL,
     deviation_l REAL,
     source_document_id TEXT,
+    batch_id TEXT,
+    organization TEXT NOT NULL DEFAULT '',
+    department TEXT NOT NULL DEFAULT '',
+    vehicle_make TEXT NOT NULL DEFAULT '',
+    vehicle_model TEXT NOT NULL DEFAULT '',
+    vehicle_vin TEXT NOT NULL DEFAULT '',
+    garage_number TEXT NOT NULL DEFAULT '',
+    driver_name TEXT NOT NULL DEFAULT '',
+    personnel_number TEXT NOT NULL DEFAULT '',
+    departure_time TEXT,
+    return_time TEXT,
+    refueled_l REAL NOT NULL DEFAULT 0,
+    fuel_name TEXT NOT NULL DEFAULT '',
+    route TEXT NOT NULL DEFAULT '',
+    assignment_text TEXT NOT NULL DEFAULT '',
+    fuel_card_number TEXT NOT NULL DEFAULT '',
+    source_pages_json TEXT NOT NULL DEFAULT '[]',
+    confidence REAL NOT NULL DEFAULT 0,
+    needs_review INTEGER NOT NULL DEFAULT 0,
+    processing_status TEXT NOT NULL DEFAULT 'manual',
+    folder_path TEXT NOT NULL DEFAULT '',
+    individual_pdf_path TEXT NOT NULL DEFAULT '',
     note TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
-    FOREIGN KEY(employee_id) REFERENCES work_employees(id),
-    FOREIGN KEY(vehicle_id) REFERENCES garage_vehicles(id),
+    FOREIGN KEY(employee_id) REFERENCES work_employees(id) ON DELETE SET NULL,
+    FOREIGN KEY(vehicle_id) REFERENCES garage_vehicles(id) ON DELETE SET NULL,
     FOREIGN KEY(source_document_id) REFERENCES work_documents(id) ON DELETE SET NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_garage_waybills_month
 ON garage_waybills(trip_date, vehicle_id, employee_id);
+
+CREATE INDEX IF NOT EXISTS idx_garage_waybills_batch
+ON garage_waybills(batch_id, trip_date);
+
+CREATE INDEX IF NOT EXISTS idx_garage_waybills_review
+ON garage_waybills(needs_review, processing_status, trip_date);
 
 CREATE TABLE IF NOT EXISTS garage_fuel_statements (
     id TEXT PRIMARY KEY,
@@ -584,3 +612,175 @@ ON garage_fuel_transactions(vehicle_id, operation_date);
 
 CREATE INDEX IF NOT EXISTS idx_garage_fuel_transactions_resolution
 ON garage_fuel_transactions(resolution_status, operation_date);
+
+
+CREATE TABLE IF NOT EXISTS work_employee_schedules (
+    id TEXT PRIMARY KEY,
+    employee_id TEXT NOT NULL,
+    valid_from TEXT,
+    valid_to TEXT,
+    weekdays_json TEXT NOT NULL DEFAULT '[0,1,2,3,4]',
+    start_time TEXT NOT NULL,
+    end_time TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'manual',
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(employee_id) REFERENCES work_employees(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_work_employee_schedules_lookup
+ON work_employee_schedules(employee_id, active, valid_from, valid_to);
+
+CREATE TABLE IF NOT EXISTS work_waybill_batches (
+    id TEXT PRIMARY KEY,
+    document_id TEXT,
+    original_name TEXT NOT NULL,
+    source_path TEXT NOT NULL,
+    sha256 TEXT NOT NULL UNIQUE,
+    size_bytes INTEGER NOT NULL,
+    page_count INTEGER NOT NULL DEFAULT 0,
+    uploaded_by TEXT NOT NULL DEFAULT 'user',
+    source TEXT NOT NULL DEFAULT 'documents',
+    status TEXT NOT NULL DEFAULT 'uploaded',
+    stage TEXT NOT NULL DEFAULT 'uploaded',
+    pages_processed INTEGER NOT NULL DEFAULT 0,
+    pages_ocr INTEGER NOT NULL DEFAULT 0,
+    waybills_detected INTEGER NOT NULL DEFAULT 0,
+    waybills_completed INTEGER NOT NULL DEFAULT 0,
+    errors_count INTEGER NOT NULL DEFAULT 0,
+    review_count INTEGER NOT NULL DEFAULT 0,
+    progress_json TEXT NOT NULL DEFAULT '{}',
+    error TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(document_id) REFERENCES work_documents(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_work_waybill_batches_status
+ON work_waybill_batches(status, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS work_waybill_batch_pages (
+    id TEXT PRIMARY KEY,
+    batch_id TEXT NOT NULL,
+    page_number INTEGER NOT NULL,
+    waybill_id TEXT,
+    ocr_engine TEXT NOT NULL DEFAULT '',
+    ocr_text TEXT NOT NULL DEFAULT '',
+    ocr_blocks_json TEXT NOT NULL DEFAULT '[]',
+    ocr_tables_json TEXT NOT NULL DEFAULT '[]',
+    confidence REAL NOT NULL DEFAULT 0,
+    image_path TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'pending',
+    error TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(batch_id) REFERENCES work_waybill_batches(id) ON DELETE CASCADE,
+    FOREIGN KEY(waybill_id) REFERENCES garage_waybills(id) ON DELETE SET NULL,
+    UNIQUE(batch_id, page_number)
+);
+
+CREATE INDEX IF NOT EXISTS idx_work_waybill_batch_pages_batch
+ON work_waybill_batch_pages(batch_id, page_number);
+
+CREATE TABLE IF NOT EXISTS garage_waybill_fields (
+    waybill_id TEXT NOT NULL,
+    field_key TEXT NOT NULL,
+    original_value TEXT NOT NULL DEFAULT '',
+    corrected_value TEXT,
+    confidence REAL NOT NULL DEFAULT 0,
+    verified INTEGER NOT NULL DEFAULT 0,
+    provenance_json TEXT NOT NULL DEFAULT '{}',
+    corrected_at TEXT,
+    corrected_by TEXT,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(waybill_id, field_key),
+    FOREIGN KEY(waybill_id) REFERENCES garage_waybills(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_garage_waybill_fields_review
+ON garage_waybill_fields(verified, confidence, field_key);
+
+CREATE TABLE IF NOT EXISTS garage_waybill_anomalies (
+    id TEXT PRIMARY KEY,
+    waybill_id TEXT NOT NULL,
+    anomaly_type TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    message TEXT NOT NULL,
+    details_json TEXT NOT NULL DEFAULT '{}',
+    resolved INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(waybill_id) REFERENCES garage_waybills(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_garage_waybill_anomalies_waybill
+ON garage_waybill_anomalies(waybill_id, resolved, severity);
+
+CREATE TABLE IF NOT EXISTS work_overtime_candidates (
+    id TEXT PRIMARY KEY,
+    employee_id TEXT,
+    work_date TEXT,
+    waybill_id TEXT NOT NULL UNIQUE,
+    scheduled_start TEXT,
+    scheduled_end TEXT,
+    actual_departure TEXT,
+    actual_return TEXT,
+    overtime_before_minutes INTEGER NOT NULL DEFAULT 0,
+    overtime_after_minutes INTEGER NOT NULL DEFAULT 0,
+    overtime_total_minutes INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'detected',
+    confidence REAL NOT NULL DEFAULT 0,
+    comment TEXT NOT NULL DEFAULT '',
+    applied_entry_id TEXT,
+    applied_minutes INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(employee_id) REFERENCES work_employees(id) ON DELETE SET NULL,
+    FOREIGN KEY(waybill_id) REFERENCES garage_waybills(id) ON DELETE CASCADE,
+    FOREIGN KEY(applied_entry_id) REFERENCES work_timesheet_entries(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_work_overtime_candidates_review
+ON work_overtime_candidates(status, work_date, employee_id);
+
+CREATE TABLE IF NOT EXISTS work_entity_relations (
+    id TEXT PRIMARY KEY,
+    source_type TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    relation_type TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    source_document_id TEXT,
+    confidence REAL NOT NULL DEFAULT 1.0,
+    evidence_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(source_document_id) REFERENCES work_documents(id) ON DELETE SET NULL,
+    UNIQUE(source_type, source_id, relation_type, target_type, target_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_work_entity_relations_source
+ON work_entity_relations(source_type, source_id, relation_type);
+
+CREATE INDEX IF NOT EXISTS idx_work_entity_relations_target
+ON work_entity_relations(target_type, target_id, relation_type);
+
+CREATE TABLE IF NOT EXISTS work_audit_log (
+    id TEXT PRIMARY KEY,
+    actor TEXT NOT NULL DEFAULT 'system',
+    action TEXT NOT NULL,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    field_name TEXT NOT NULL DEFAULT '',
+    original_value TEXT,
+    new_value TEXT,
+    reason TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL DEFAULT '',
+    source_document_id TEXT,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(source_document_id) REFERENCES work_documents(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_work_audit_entity
+ON work_audit_log(entity_type, entity_id, created_at DESC);
