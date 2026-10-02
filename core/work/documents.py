@@ -757,6 +757,123 @@ class DocumentIntelligenceService:
             (max(1, min(int(limit), 500)),),
         )
 
+    def legacy_rag_count(self) -> int:
+        rows = self.db.query(
+            """
+            SELECT COUNT(*) AS count
+            FROM ai_documents a
+            LEFT JOIN work_documents w ON w.id=a.id
+            WHERE w.id IS NULL
+            """
+        )
+        return int(rows[0]["count"] or 0)
+
+    def migrate_legacy_rag(self, *, limit: int = 500) -> dict:
+        rows = self.db.query(
+            """
+            SELECT a.id, a.title, a.source, a.metadata_json
+            FROM ai_documents a
+            LEFT JOIN work_documents w ON w.id=a.id
+            WHERE w.id IS NULL
+            ORDER BY a.created_at ASC
+            LIMIT ?
+            """,
+            (max(1, min(int(limit), 2000)),),
+        )
+        result = {
+            "requested": len(rows),
+            "migrated": 0,
+            "duplicates": 0,
+            "failed": 0,
+            "items": [],
+        }
+        for legacy in rows:
+            chunks = self.db.query(
+                """
+                SELECT content
+                FROM ai_document_chunks
+                WHERE document_id=?
+                ORDER BY chunk_index ASC
+                """,
+                (legacy["id"],),
+            )
+            text = "\n".join(
+                str(chunk["content"] or "").strip()
+                for chunk in chunks
+                if str(chunk["content"] or "").strip()
+            ).strip()
+            if not text:
+                message = "legacy RAG document has no chunks"
+                self.record_ingest_event(
+                    filename=str(legacy["title"] or legacy["id"]),
+                    source="legacy_rag",
+                    status="failed",
+                    error_type="LegacyRAGError",
+                    message=message,
+                )
+                result["failed"] += 1
+                result["items"].append({
+                    "legacy_id": legacy["id"],
+                    "status": "failed",
+                    "message": message,
+                })
+                continue
+
+            try:
+                legacy_meta = json.loads(legacy["metadata_json"] or "{}")
+                item = self.ingest({
+                    "title": legacy["title"] or "Legacy RAG document",
+                    "text": text,
+                    "source": "legacy_rag",
+                    "metadata": {
+                        "legacy_rag": {
+                            "id": legacy["id"],
+                            "source": legacy["source"],
+                            "metadata": legacy_meta,
+                        },
+                    },
+                })
+            except Exception as exc:
+                self.record_ingest_event(
+                    filename=str(legacy["title"] or legacy["id"]),
+                    source="legacy_rag",
+                    status="failed",
+                    error_type=type(exc).__name__,
+                    message=str(exc),
+                )
+                result["failed"] += 1
+                result["items"].append({
+                    "legacy_id": legacy["id"],
+                    "status": "failed",
+                    "message": str(exc),
+                })
+                continue
+
+            with self.db.connect() as db:
+                db.execute(
+                    "DELETE FROM ai_document_chunks WHERE document_id=?",
+                    (legacy["id"],),
+                )
+                db.execute(
+                    "DELETE FROM ai_documents WHERE id=?",
+                    (legacy["id"],),
+                )
+
+            status = "duplicate" if item.get("duplicate") else "migrated"
+            self.record_ingest_event(
+                filename=str(legacy["title"] or legacy["id"]),
+                source="legacy_rag",
+                status=status,
+                document_id=item["id"],
+            )
+            result["duplicates" if status == "duplicate" else "migrated"] += 1
+            result["items"].append({
+                "legacy_id": legacy["id"],
+                "document_id": item["id"],
+                "status": status,
+            })
+        return result
+
     def stats(self) -> dict:
         totals = self.db.query(
             """
@@ -814,6 +931,7 @@ class DocumentIntelligenceService:
                 "by_status": {row["status"]: row["count"] for row in ingest_rows},
                 "recent_failures": recent_failures,
             },
+            "legacy_rag_documents": self.legacy_rag_count(),
         }
 
     def _preserve_original(self, item: dict, filename: str, raw: bytes) -> str:
