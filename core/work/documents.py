@@ -86,6 +86,8 @@ DOCUMENT_TYPES = {
     "timesheet": "Табель",
     "vehicle_document": "Документ на технику",
     "fuel_statement": "Выписка ГСМ",
+    "waybill_batch": "Пачка путевых листов",
+    "waybill": "Путевой лист",
     "other": "Прочее",
 }
 
@@ -99,6 +101,8 @@ TYPE_ARCHIVES = {
     "timesheet": "Табель",
     "vehicle_document": "Документы техники",
     "fuel_statement": "Выписки ГСМ",
+    "waybill_batch": "Путевые листы/Оригиналы",
+    "waybill": "Путевые листы",
     "other": "Документы",
 }
 
@@ -230,6 +234,17 @@ class DocumentIntelligenceService:
         metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
 
         content_hash = _sha256(text)
+        requested_document_id = str(payload.get("_document_id") or "").strip()
+        if requested_document_id:
+            existing = self.db.query(
+                "SELECT id FROM work_documents WHERE id=?",
+                (requested_document_id,),
+            )
+            if existing:
+                item = self.document(requested_document_id)
+                item["duplicate"] = True
+                return item
+
         duplicate = self.db.query(
             """
             SELECT id FROM work_documents
@@ -260,7 +275,7 @@ class DocumentIntelligenceService:
             explicit_family_id=str(payload.get("family_id") or "").strip(),
         )
 
-        archive_path = self._archive_path(
+        archive_path = str(payload.get("_archive_path") or "").strip() or self._archive_path(
             document_type,
             year,
             document_date=document_date,
@@ -268,7 +283,7 @@ class DocumentIntelligenceService:
         normalized_hash = _sha256(re.sub(r"\s+", "", text).lower())
         structure = self._structure_signature(document_type, text, facts)
         structure_hash = _sha256(json.dumps(structure, ensure_ascii=False, sort_keys=True))
-        document_id = str(uuid4())
+        document_id = requested_document_id or str(uuid4())
         now = _now()
 
         passport = self._passport(
@@ -1137,6 +1152,14 @@ class DocumentIntelligenceService:
             return any(term in value for term in terms)
 
         # Prefer title and document heading over references later in the body.
+        if has(title_l, "пачка путевых листов") or (
+            "пачка" in early and "путев" in early and "лист" in early
+        ):
+            return "waybill_batch"
+        if has(title_l, "путевой лист") or (
+            "путев" in early and "лист" in early
+        ):
+            return "waybill"
         fuel_statement_signals = (
             "выписка по пластиковым картам" in title_l
             or "выписка по пластиковым картам" in head
