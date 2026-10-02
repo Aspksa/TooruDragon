@@ -127,17 +127,43 @@ def document_stats(_request):
     }
 
 
+def document_ingest_history(request):
+    try:
+        limit = int(request.query.get("limit", ["100"])[0])
+    except ValueError:
+        return 400, {"error": "invalid_limit"}
+    return 200, {
+        "service": "work",
+        "history": documents.ingest_history(limit=limit),
+    }
+
+
 def document_file_ingest(request):
     payload = request.json if isinstance(request.json, dict) else {}
+    filename = str(payload.get("filename") or "")
+    source = str(payload.get("source") or "web_file")
     try:
         item = documents.ingest_file(payload)
     except ValueError as exc:
+        documents.record_ingest_event(
+            filename=filename,
+            source=source,
+            status="failed",
+            error_type=type(exc).__name__,
+            message=str(exc),
+        )
         return 400, {
             "error": "document_file_ingest_failed",
             "message": str(exc),
-            "filename": str(payload.get("filename") or ""),
+            "filename": filename,
         }
 
+    documents.record_ingest_event(
+        filename=filename,
+        source=source,
+        status="duplicate" if item.get("duplicate") else "studied",
+        document_id=item["id"],
+    )
     runtime.events.publish(
         "work.document.file_ingested",
         "work",
@@ -155,11 +181,26 @@ def document_file_ingest(request):
 
 def document_ingest(request):
     payload = request.json if isinstance(request.json, dict) else {}
+    title = str(payload.get("title") or "Вставленный текст")
+    source = str(payload.get("source") or "web_text")
     try:
         item = documents.ingest(payload)
     except ValueError as exc:
+        documents.record_ingest_event(
+            filename=title,
+            source=source,
+            status="failed",
+            error_type=type(exc).__name__,
+            message=str(exc),
+        )
         return 400, {"error": "invalid_document", "message": str(exc)}
 
+    documents.record_ingest_event(
+        filename=title,
+        source=source,
+        status="duplicate" if item.get("duplicate") else "studied",
+        document_id=item["id"],
+    )
     runtime.events.publish(
         "work.document.ingested",
         "work",
@@ -402,6 +443,10 @@ if __name__ == "__main__":
         "/documents/search": Route(document_search, protected=True),
         "/documents/graph": Route(document_graph, protected=True),
         "/documents/stats": Route(document_stats, protected=True),
+        "/documents/ingest-history": Route(
+            document_ingest_history,
+            protected=True,
+        ),
         "/documents/ingest": Route(
             document_ingest,
             method="POST",
