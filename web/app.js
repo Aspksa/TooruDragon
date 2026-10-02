@@ -1516,6 +1516,7 @@ async function saveGarageVehicle() {
         model:$("#garage-vehicle-model").value.trim(),
         department:$("#garage-vehicle-department").value.trim(),
         fuel_type:$("#garage-vehicle-fuel-type").value,
+        tank_capacity_l:$("#garage-vehicle-tank").value || null,
         default_norm_l_per_100km:$("#garage-vehicle-norm").value || null,
         active:true,
       }),
@@ -1524,6 +1525,7 @@ async function saveGarageVehicle() {
     $("#garage-vehicle-vin").value = "";
     $("#garage-vehicle-make").value = "";
     $("#garage-vehicle-model").value = "";
+    $("#garage-vehicle-tank").value = "";
     $("#garage-vehicle-norm").value = "";
     toast("Автомобиль добавлен в гараж");
     await loadGarage();
