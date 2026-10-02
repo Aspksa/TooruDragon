@@ -1075,7 +1075,7 @@ function renderTimesheetCustomEntryFields(entry=null) {
 
 function collectTimesheetCustomValues() {
   const values = {};
-  $("[data-ts-custom-id]").forEach(input => {
+  document.querySelectorAll("[data-ts-custom-id]").forEach(input => {
     const id = input.dataset.tsCustomId;
     values[id] = input.type === "checkbox" ? input.checked : input.value;
   });
