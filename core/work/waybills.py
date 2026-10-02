@@ -624,12 +624,40 @@ class WaybillAutomationService:
             (waybill_id,),
         )
         if existing:
+            recovered = self.waybill(waybill_id)
+            recovered_fields = {
+                item["field_key"]: {
+                    "value": item["value"],
+                    "confidence": item["confidence"],
+                }
+                for item in recovered.get("fields", [])
+            }
+            recovered_missing = [
+                key
+                for key in ("trip_date", "vehicle_plate", "driver_name")
+                if not self._value(recovered_fields, key)
+            ]
+            recovered_low = [
+                key
+                for key, item in recovered_fields.items()
+                if key in CRITICAL_FIELDS
+                and float(item.get("confidence") or 0) < FIELD_THRESHOLD
+            ]
             self._ensure_waybill_document(
                 waybill_id=waybill_id,
                 batch=batch,
                 pages=pages,
                 raw_batch=raw_batch,
                 sequence=sequence,
+            )
+            self._seed_waybill_anomalies(
+                waybill_id,
+                fields=recovered_fields,
+                missing_critical=recovered_missing,
+                low_critical=recovered_low,
+                vehicle_id=recovered.get("vehicle_id"),
+                employee_id=recovered.get("employee_id"),
+                split_needs_review=bool(group.get("needs_review")),
             )
             return self.waybill(waybill_id)
 
@@ -2173,7 +2201,28 @@ class WaybillAutomationService:
         actor: str = "user",
         comment: str = "",
     ) -> dict:
-        self.waybill(waybill_id)
+        waybill = self.waybill(waybill_id)
+        missing = []
+        if not waybill.get("trip_date"):
+            missing.append("дата")
+        if not waybill.get("vehicle_id"):
+            missing.append("автомобиль")
+        if not waybill.get("employee_id"):
+            missing.append("водитель")
+        if missing:
+            raise ValueError(
+                "Нельзя подтвердить путевой лист: требуется определить "
+                + ", ".join(missing)
+            )
+
+        self.db.execute(
+            """
+            UPDATE garage_waybill_fields
+            SET verified=1, updated_at=?
+            WHERE waybill_id=? AND COALESCE(corrected_value, original_value)!=''
+            """,
+            (_now(), waybill_id),
+        )
         self.db.execute(
             """
             UPDATE garage_waybills
@@ -2181,14 +2230,6 @@ class WaybillAutomationService:
             WHERE id=?
             """,
             (_now(), waybill_id),
-        )
-        self.db.execute(
-            """
-            UPDATE garage_waybill_fields
-            SET verified=1, updated_at=?
-            WHERE waybill_id=? AND confidence>=?
-            """,
-            (_now(), waybill_id, FIELD_THRESHOLD),
         )
         self._audit(
             actor=actor,
