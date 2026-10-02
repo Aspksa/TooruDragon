@@ -520,6 +520,11 @@ def waybill_confirm(request):
         )
     except KeyError:
         return 404, {"error": "waybill_not_found"}
+    except ValueError as exc:
+        return 409, {
+            "error": "waybill_confirmation_blocked",
+            "message": str(exc),
+        }
     return 200, {"service": "work", "waybill": item}
 
 
@@ -552,6 +557,17 @@ def waybill_overtime_candidates(request):
     except (ValueError, TypeError) as exc:
         return 400, {"error": "invalid_overtime_filter", "message": str(exc)}
     return 200, {"service": "work", "candidates": items}
+
+
+def waybill_monthly_mileage(request):
+    month = str(request.query.get("month", [""])[0]).strip()
+    if not month:
+        month = date.today().strftime("%Y-%m")
+    try:
+        data = waybills.monthly_mileage_summary(month)
+    except ValueError as exc:
+        return 400, {"error": "invalid_month", "message": str(exc)}
+    return 200, {"service": "work", "summary": data}
 
 
 def waybill_overtime_summary(request):
@@ -1073,6 +1089,10 @@ if __name__ == "__main__":
         "/waybills/batch/pages": Route(waybill_batch_pages, protected=True),
         "/waybills": Route(waybill_list, protected=True),
         "/waybills/get": Route(waybill_get, protected=True),
+        "/waybills/monthly-mileage": Route(
+            waybill_monthly_mileage,
+            protected=True,
+        ),
         "/waybills/overtime": Route(
             waybill_overtime_candidates,
             protected=True,
