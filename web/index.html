@@ -21,6 +21,7 @@
       <button data-page="workflow">◇ <span>Workflow</span></button>
       <button data-page="events">⌁ <span>События</span></button>
       <button data-page="agent">✦ <span>Agent Console</span></button>
+      <button data-page="documents">▤ <span>Документы Тоору</span></button>
       <button data-page="timesheet">▦ <span>Табель</span></button>
       <button data-page="control">⚙ <span>Control Plane</span></button>
       <button data-page="audit">☷ <span>Audit</span></button>
@@ -161,18 +162,8 @@
           <button class="btn" id="ai-memory-search">Найти похожее</button>
         </div>
         <pre class="json memory-results" id="ai-memory-results">Retrieval results появятся здесь.</pre>
-        <div class="rag-panel section">
-          <div class="section-head"><h3>RAG documents</h3><button class="btn" id="ai-rag-refresh">↻ Документы</button></div>
-          <div class="form-grid">
-            <div class="field"><label>Title</label><input id="ai-rag-title" placeholder="Название документа"></div>
-            <div class="field"><label>Source</label><input id="ai-rag-source" value="web"></div>
-          </div>
-          <div class="field" style="margin-top:10px"><label>Document text</label><textarea id="ai-rag-text" placeholder="Вставьте текст документа для chunking/indexing"></textarea></div>
-          <div class="actions" style="margin-top:10px">
-            <button class="btn primary" id="ai-rag-ingest">Индексировать</button>
-            <button class="btn" id="ai-rag-search">Искать по документам</button>
-          </div>
-          <pre class="json memory-results" id="ai-rag-results">RAG results появятся здесь.</pre>
+        <div class="section doc-moved-note">
+          Документы и RAG объединены в разделе <strong>«Документы Тоору»</strong>. Здесь оставлен только чат и память.
         </div>
       </div>
       <div class="section two-col">
@@ -196,6 +187,127 @@
             <div class="section-head"><h3>Console transcript</h3><button class="btn" id="agent-console-clear">Очистить</button></div>
             <div class="console" id="agent-console"></div>
           </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="page" data-page="documents">
+      <div class="section-head">
+        <div>
+          <h3>Документы Тоору</h3>
+          <div class="subtitle">Единый центр: загрузка → классификация → Паспорт → ДНК → факты → связи → проверки → RAG.</div>
+        </div>
+        <div class="actions">
+          <input id="documents-search" class="compact-input" placeholder="Поиск по документам">
+          <button class="btn" id="documents-search-btn">Найти</button>
+          <button class="btn" id="documents-refresh">↻ Обновить</button>
+        </div>
+      </div>
+
+      <div class="grid audit-metrics">
+        <div class="card metric"><div class="metric-label">Активные</div><div class="metric-value" id="doc-metric-active">0</div><div class="metric-note">документов</div></div>
+        <div class="card metric"><div class="metric-label">Ошибки</div><div class="metric-value" id="doc-metric-errors">0</div><div class="metric-note">требуют внимания</div></div>
+        <div class="card metric"><div class="metric-label">Предупреждения</div><div class="metric-value" id="doc-metric-warnings">0</div><div class="metric-note">проверить</div></div>
+        <div class="card metric"><div class="metric-label">Архив</div><div class="metric-value" id="doc-metric-archived">0</div><div class="metric-note">скрыты из работы</div></div>
+      </div>
+
+      <div class="section two-col document-ingest-grid">
+        <div class="card panel">
+          <div class="section-head"><h3>Загрузить файл</h3><span class="status-pill online">автоанализ</span></div>
+          <div class="field"><label>Файл</label><input id="doc-file" type="file" accept=".txt,.md,.csv,.json,.log,.docx,.xlsx,.pdf,.doc"></div>
+          <div class="form-grid" style="margin-top:10px">
+            <div class="field"><label>Название (необязательно)</label><input id="doc-file-title" placeholder="Возьмётся из имени файла"></div>
+            <div class="field"><label>Тип</label>
+              <select id="doc-file-type">
+                <option value="">Определить автоматически</option>
+                <option value="service_memo">Служебная записка</option>
+                <option value="contract">Договор</option>
+                <option value="invoice_offer">Счёт-оферта</option>
+                <option value="invoice">Счёт</option>
+                <option value="act">Акт</option>
+                <option value="order">Приказ</option>
+                <option value="timesheet">Табель</option>
+                <option value="vehicle_document">Документ на технику</option>
+                <option value="other">Прочее</option>
+              </select>
+            </div>
+          </div>
+          <button class="btn primary" id="doc-file-ingest" style="margin-top:12px;width:100%">Изучить файл</button>
+          <div class="subtitle" style="margin-top:10px">DOCX/XLSX/TXT читаются встроенно. PDF — через pypdf. Старый .DOC покажет явную причину вместо молчаливой ошибки.</div>
+        </div>
+
+        <div class="card panel">
+          <div class="section-head"><h3>Вставить текст</h3></div>
+          <div class="field"><label>Название</label><input id="doc-text-title" placeholder="Название документа"></div>
+          <div class="field" style="margin-top:10px"><label>Текст документа</label><textarea id="doc-text-content" placeholder="Вставьте текст, если файл уже распознан"></textarea></div>
+          <button class="btn" id="doc-text-ingest" style="margin-top:12px;width:100%">Изучить текст</button>
+        </div>
+      </div>
+
+      <div class="section card panel">
+        <div class="section-head">
+          <h3>Ошибки и неудачные загрузки</h3>
+          <span class="status-pill" id="document-ingest-failure-badge">0</span>
+        </div>
+        <div id="document-ingest-failures" class="document-failure-list"></div>
+      </div>
+
+      <div class="section document-workspace">
+        <div class="card panel document-list-panel">
+          <div class="section-head">
+            <h3>Документы</h3>
+            <select id="documents-type-filter" class="compact-select">
+              <option value="">Все типы</option>
+              <option value="service_memo">Служебные записки</option>
+              <option value="contract">Договоры</option>
+              <option value="invoice_offer">Счета-оферты</option>
+              <option value="invoice">Счета</option>
+              <option value="act">Акты</option>
+              <option value="order">Приказы</option>
+              <option value="timesheet">Табели</option>
+              <option value="vehicle_document">Техника</option>
+              <option value="other">Прочее</option>
+            </select>
+          </div>
+          <div id="documents-list" class="documents-list"></div>
+        </div>
+
+        <div class="card panel document-detail-panel">
+          <div id="document-empty" class="empty">Выберите документ слева.</div>
+          <div id="document-detail" hidden>
+            <div class="section-head">
+              <div>
+                <h3 id="document-title">Документ</h3>
+                <div class="subtitle" id="document-meta"></div>
+              </div>
+              <div class="actions">
+                <button class="btn" id="document-reanalyze">↻ Переизучить</button>
+                <button class="btn danger" id="document-archive">В архив</button>
+              </div>
+            </div>
+
+            <div class="document-tabs">
+              <button class="active" data-document-tab="passport">Паспорт</button>
+              <button data-document-tab="dna">ДНК</button>
+              <button data-document-tab="facts">Факты</button>
+              <button data-document-tab="issues">Проверки</button>
+              <button data-document-tab="relations">Связи</button>
+              <button data-document-tab="text">Текст</button>
+            </div>
+            <div class="document-tab active" data-document-panel="passport"><pre class="json" id="document-passport"></pre></div>
+            <div class="document-tab" data-document-panel="dna"><pre class="json" id="document-dna"></pre></div>
+            <div class="document-tab" data-document-panel="facts"><div id="document-facts" class="stack-list"></div></div>
+            <div class="document-tab" data-document-panel="issues"><div id="document-issues" class="stack-list"></div></div>
+            <div class="document-tab" data-document-panel="relations"><div id="document-relations" class="stack-list"></div></div>
+            <div class="document-tab" data-document-panel="text"><pre class="json document-text" id="document-text"></pre></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section card panel">
+        <div class="section-head"><h3>Карта автоматизации</h3><span class="status-pill online">единый контур</span></div>
+        <div class="document-pipeline">
+          <span>Файл</span><b>→</b><span>Тип</span><b>→</b><span>Паспорт</span><b>→</b><span>ДНК</span><b>→</b><span>Факты</span><b>→</b><span>Связи</span><b>→</b><span>Проверки</span><b>→</b><span>RAG</span>
         </div>
       </div>
     </section>

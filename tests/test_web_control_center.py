@@ -25,6 +25,12 @@ class WebControlCenterProxyTests(unittest.TestCase):
         self.assertTrue(_allowed("GET", "work", "/timesheet/calendar?month=2026-10"))
         self.assertTrue(_allowed("GET", "work", "/timesheet/overtime?month=2026-10"))
         self.assertTrue(_allowed("GET", "work", "/timesheet/custom-columns"))
+        self.assertTrue(_allowed("GET", "work", "/documents?limit=100"))
+        self.assertTrue(_allowed("GET", "work", "/documents/get?id=abc"))
+        self.assertTrue(_allowed("GET", "work", "/documents/search?q=invoice"))
+        self.assertTrue(_allowed("GET", "work", "/documents/graph"))
+        self.assertTrue(_allowed("GET", "work", "/documents/stats"))
+        self.assertTrue(_allowed("GET", "work", "/documents/ingest-history?limit=100"))
         self.assertTrue(_allowed("GET", "main", "/api/task/transitions?task_id=abc"))
 
     def test_control_actions_are_explicitly_allowlisted(self):
@@ -38,6 +44,11 @@ class WebControlCenterProxyTests(unittest.TestCase):
         self.assertTrue(_allowed("POST", "work", "/timesheet/employee/save"))
         self.assertTrue(_allowed("POST", "work", "/timesheet/entry/save"))
         self.assertTrue(_allowed("POST", "work", "/timesheet/custom-column/save"))
+        self.assertTrue(_allowed("POST", "work", "/documents/ingest"))
+        self.assertTrue(_allowed("POST", "work", "/documents/file-ingest"))
+        self.assertTrue(_allowed("POST", "work", "/documents/reanalyze"))
+        self.assertTrue(_allowed("POST", "work", "/documents/archive"))
+        self.assertTrue(_allowed("POST", "work", "/documents/migrate-legacy-rag"))
 
     def test_arbitrary_local_proxying_is_rejected(self):
         self.assertFalse(_allowed("GET", "main", "/system"))
@@ -46,6 +57,7 @@ class WebControlCenterProxyTests(unittest.TestCase):
         self.assertFalse(_allowed("POST", "supervisor", "/unknown"))
         self.assertFalse(_allowed("POST", "tooru_ai", "/arbitrary"))
         self.assertFalse(_allowed("POST", "work", "/timesheet/summary"))
+        self.assertFalse(_allowed("POST", "work", "/documents/get"))
 
     def test_wrong_method_is_rejected(self):
         self.assertFalse(_allowed("POST", "main", "/api/cores"))
@@ -91,6 +103,33 @@ class WebControlCenterProxyTests(unittest.TestCase):
         self.assertIn('href="/report/system.json"', html)
         self.assertIn('id="download-machine-report"', html)
         self.assertIn("download", html)
+
+    def test_documents_workspace_replaces_duplicate_rag_panel(self):
+        html = (Path(ROOT) / "index.html").read_text(encoding="utf-8")
+        script = (Path(ROOT) / "app.js").read_text(encoding="utf-8")
+        self.assertIn('data-page="documents"', html)
+        self.assertIn('id="document-passport"', html)
+        self.assertIn('id="document-dna"', html)
+        self.assertNotIn('id="ai-rag-ingest"', html)
+        self.assertNotIn("loadRAGDocuments()", script)
+        self.assertIn(
+            'document.querySelectorAll("[data-ts-custom-id]")',
+            script,
+        )
+
+    def test_machine_report_includes_document_intelligence(self):
+        calls = []
+
+        def fake_fetcher(upstream, path, timeout=5.0):
+            calls.append((upstream, path))
+            return {"status": "ok"}
+
+        report = _build_machine_report(fetcher=fake_fetcher)
+        self.assertIn("work.documents_status", report["snapshot"])
+        self.assertIn("work.documents_stats", report["snapshot"])
+        self.assertIn("work.documents_recent", report["snapshot"])
+        self.assertIn("work.documents_graph", report["snapshot"])
+        self.assertIn("work.documents_ingest_history", report["snapshot"])
 
 
 if __name__ == "__main__":

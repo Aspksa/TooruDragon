@@ -18,7 +18,7 @@ PROJECT_ROOT = ROOT.parent
 CONFIG_PATH = PROJECT_ROOT / "config" / "system.json"
 HOST = "127.0.0.1"
 PORT = 8710
-MAX_BODY_BYTES = 2_500_000
+MAX_BODY_BYTES = 18_000_000
 
 UPSTREAMS = {
     "main": "http://127.0.0.1:8700",
@@ -68,6 +68,13 @@ GET_ALLOWLIST = {
         "/timesheet/overtime",
         "/timesheet/custom-columns",
         "/timesheet/anomalies",
+        "/documents/status",
+        "/documents",
+        "/documents/get",
+        "/documents/search",
+        "/documents/graph",
+        "/documents/stats",
+        "/documents/ingest-history",
     ),
     "supervisor": (
         "/health",
@@ -102,6 +109,11 @@ POST_ALLOWLIST = {
         "/timesheet/employee/save",
         "/timesheet/entry/save",
         "/timesheet/custom-column/save",
+        "/documents/ingest",
+        "/documents/file-ingest",
+        "/documents/reanalyze",
+        "/documents/archive",
+        "/documents/migrate-legacy-rag",
     ),
     "supervisor": (
         "/core/action",
@@ -217,6 +229,14 @@ def _build_machine_report(fetcher=None) -> dict:
         "work.timesheet_custom_columns": (
             "work",
             "/timesheet/custom-columns",
+        ),
+        "work.documents_status": ("work", "/documents/status"),
+        "work.documents_stats": ("work", "/documents/stats"),
+        "work.documents_recent": ("work", "/documents?limit=100"),
+        "work.documents_graph": ("work", "/documents/graph"),
+        "work.documents_ingest_history": (
+            "work",
+            "/documents/ingest-history?limit=100",
         ),
         "supervisor.health": ("supervisor", "/health"),
         "supervisor.status": ("supervisor", "/status"),
