@@ -65,6 +65,8 @@ GET_ALLOWLIST = {
         "/timesheet/entries",
         "/timesheet/calendar",
         "/timesheet/summary",
+        "/timesheet/overtime",
+        "/timesheet/custom-columns",
         "/timesheet/anomalies",
     ),
     "supervisor": (
@@ -99,6 +101,7 @@ POST_ALLOWLIST = {
     "work": (
         "/timesheet/employee/save",
         "/timesheet/entry/save",
+        "/timesheet/custom-column/save",
     ),
     "supervisor": (
         "/core/action",
@@ -206,6 +209,14 @@ def _build_machine_report(fetcher=None) -> dict:
         "work.timesheet_summary": (
             "work",
             f"/timesheet/summary?month={datetime.now(timezone.utc).strftime('%Y-%m')}",
+        ),
+        "work.timesheet_overtime": (
+            "work",
+            f"/timesheet/overtime?month={datetime.now(timezone.utc).strftime('%Y-%m')}",
+        ),
+        "work.timesheet_custom_columns": (
+            "work",
+            "/timesheet/custom-columns",
         ),
         "supervisor.health": ("supervisor", "/health"),
         "supervisor.status": ("supervisor", "/status"),

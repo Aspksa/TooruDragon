@@ -268,8 +268,55 @@
             <div class="field"><label>Ночные, ч</label><input id="ts-entry-night" type="number" min="0" max="24" step="0.25" value="0"></div>
             <div class="field"><label>Примечание</label><input id="ts-entry-note" placeholder="необязательно"></div>
           </div>
+          <div class="section">
+            <div class="section-head"><h3>Произвольные поля дня</h3><span class="subtitle">Появляются из конструктора полей</span></div>
+            <div class="form-grid" id="ts-custom-entry-fields"></div>
+          </div>
           <button class="btn primary" id="ts-entry-save" style="margin-top:12px;width:100%">Сохранить день</button>
         </div>
+      </div>
+
+      <div class="section two-col">
+        <div class="card panel">
+          <div class="section-head"><h3>Конструктор колонок</h3><span class="status-pill online">без переписывания кода</span></div>
+          <div class="form-grid">
+            <div class="field"><label>Название поля</label><input id="ts-custom-label" placeholder="Например: Автомобиль"></div>
+            <div class="field"><label>Тип</label>
+              <select id="ts-custom-type">
+                <option value="text">Текст</option>
+                <option value="number">Число</option>
+                <option value="checkbox">Да / нет</option>
+              </select>
+            </div>
+            <div class="field"><label>Порядок</label><input id="ts-custom-order" type="number" value="100"></div>
+          </div>
+          <button class="btn" id="ts-custom-save" style="margin-top:12px;width:100%">+ Добавить произвольное поле</button>
+          <div id="ts-custom-columns-list" class="custom-field-list"></div>
+        </div>
+
+        <div class="card panel overtime-panel">
+          <div class="section-head">
+            <div><h3>Переработки отдельно</h3><div class="subtitle">Учётные расчёты без смешивания с начислением зарплаты.</div></div>
+            <span class="status-pill online">контроль</span>
+          </div>
+          <div class="overtime-metrics">
+            <div><span>Месячный плюс</span><strong id="ts-ot-month-excess">0</strong></div>
+            <div><span>Дневное превышение</span><strong id="ts-ot-daily-excess">0</strong></div>
+            <div><span>Заявлено сверхурочно</span><strong id="ts-ot-declared">0</strong></div>
+            <div><span>Выходные часы</span><strong id="ts-ot-weekend">0</strong></div>
+            <div><span>Ночные часы</span><strong id="ts-ot-night">0</strong></div>
+            <div><span>Недобор</span><strong id="ts-ot-deficit">0</strong></div>
+          </div>
+          <div class="subtitle" id="ts-overtime-note"></div>
+        </div>
+      </div>
+
+      <div class="section card panel">
+        <div class="section-head"><h3>Расчёт переработок по сотрудникам</h3></div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Сотрудник</th><th>Норма</th><th>Факт</th><th>Баланс</th><th>Сверх. поле</th><th>Дневное превышение</th><th>Месячный плюс</th><th>Выходные</th><th>Ночь</th><th>Недобор</th></tr></thead>
+          <tbody id="timesheet-overtime-body"></tbody>
+        </table></div>
       </div>
 
       <div class="section two-col">

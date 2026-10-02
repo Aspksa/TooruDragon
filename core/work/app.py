@@ -17,6 +17,8 @@ CAPABILITIES = [
     "work_integrations",
     "timesheet",
     "timesheet_analytics",
+    "timesheet_custom_fields",
+    "timesheet_overtime_analytics",
 ]
 
 runtime = CoreRuntime(
@@ -48,6 +50,8 @@ def timesheet_status(_request):
                 "night_hours",
                 "anomaly_detection",
                 "monthly_summary",
+                "custom_fields",
+                "overtime_analytics",
             ],
         },
     }
@@ -86,6 +90,40 @@ def employee_save(request):
         },
     )
     return 200, {"service": "work", "employee": item}
+
+
+def custom_columns(_request):
+    return 200, {
+        "service": "work",
+        "columns": timesheet.custom_columns(active_only=False),
+    }
+
+
+def custom_column_save(request):
+    payload = request.json if isinstance(request.json, dict) else {}
+    try:
+        item = timesheet.save_custom_column(payload)
+    except ValueError as exc:
+        return 400, {"error": "invalid_custom_column", "message": str(exc)}
+    except Exception as exc:
+        if exc.__class__.__name__ == "IntegrityError":
+            return 409, {
+                "error": "custom_column_conflict",
+                "message": "Ключ пользовательского поля уже используется",
+            }
+        raise
+
+    runtime.events.publish(
+        "work.timesheet.custom_column.saved",
+        "work",
+        {
+            "column_id": item["id"],
+            "key": item["key"],
+            "label": item["label"],
+            "value_type": item["value_type"],
+        },
+    )
+    return 200, {"service": "work", "column": item}
 
 
 def entries(request):
@@ -157,6 +195,17 @@ def month_summary(request):
     return 200, {"service": "work", "summary": data}
 
 
+def overtime_report(request):
+    month = str(request.query.get("month", [""])[0]).strip()
+    if not month:
+        month = date.today().strftime("%Y-%m")
+    try:
+        data = timesheet.overtime_report(month)
+    except ValueError as exc:
+        return 400, {"error": "invalid_month", "message": str(exc)}
+    return 200, {"service": "work", "overtime": data}
+
+
 def month_anomalies(request):
     month = str(request.query.get("month", [""])[0]).strip()
     if not month:
@@ -177,6 +226,12 @@ if __name__ == "__main__":
         "/capabilities": Route(capabilities, protected=False),
         "/timesheet/status": Route(timesheet_status, protected=False),
         "/timesheet/employees": Route(employees, protected=True),
+        "/timesheet/custom-columns": Route(custom_columns, protected=True),
+        "/timesheet/custom-column/save": Route(
+            custom_column_save,
+            method="POST",
+            protected=True,
+        ),
         "/timesheet/employee/save": Route(
             employee_save,
             method="POST",
@@ -190,5 +245,6 @@ if __name__ == "__main__":
         ),
         "/timesheet/calendar": Route(month_calendar, protected=True),
         "/timesheet/summary": Route(month_summary, protected=True),
+        "/timesheet/overtime": Route(overtime_report, protected=True),
         "/timesheet/anomalies": Route(month_anomalies, protected=True),
     })

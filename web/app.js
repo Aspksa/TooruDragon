@@ -18,7 +18,9 @@ const state = {
     employees: [],
     calendar: null,
     summary: null,
+    overtime: null,
     anomalies: [],
+    customColumns: [],
   },
 };
 
@@ -825,6 +827,75 @@ function renderTimesheetAnomalies(items) {
   }).join('') || '<div class="empty">Тоору не нашла проблем в табеле за выбранный месяц.</div>';
 }
 
+function renderTimesheetCustomColumns(items, entry=null) {
+  state.timesheet.customColumns = items || [];
+  const list = $("#ts-custom-columns-list");
+  if (list) {
+    list.innerHTML = state.timesheet.customColumns.map(item =>
+      '<div class="custom-field-chip '+(item.active?'':'inactive')+'">'+
+        '<div><strong>'+escapeHtml(item.label)+'</strong><small>'+escapeHtml(item.value_type)+' · '+escapeHtml(item.key)+'</small></div>'+
+        '<span>#'+escapeHtml(item.sort_order)+'</span>'+
+      '</div>'
+    ).join('') || '<div class="empty">Пользовательских полей пока нет.</div>';
+  }
+  renderTimesheetCustomEntryFields(entry);
+}
+
+function renderTimesheetCustomEntryFields(entry=null) {
+  const root = $("#ts-custom-entry-fields");
+  if (!root) return;
+  const active = (state.timesheet.customColumns || []).filter(item=>item.active);
+  const values = entry?.custom_values || {};
+  root.innerHTML = active.map(item => {
+    const stored = values[item.id]?.value;
+    if (item.value_type === "checkbox") {
+      return '<div class="field ts-custom-field"><label>'+escapeHtml(item.label)+'</label>'+
+        '<label class="checkbox-field"><input type="checkbox" data-ts-custom-id="'+escapeHtml(item.id)+'" '+(stored?'checked':'')+'> <span>Да</span></label></div>';
+    }
+    const type = item.value_type === "number" ? "number" : "text";
+    const step = item.value_type === "number" ? ' step="any"' : "";
+    return '<div class="field ts-custom-field"><label>'+escapeHtml(item.label)+'</label>'+
+      '<input type="'+type+'"'+step+' data-ts-custom-id="'+escapeHtml(item.id)+'" value="'+escapeHtml(stored ?? "")+'"></div>';
+  }).join('') || '<div class="empty">Добавьте свои поля в конструкторе колонок.</div>';
+}
+
+function collectTimesheetCustomValues() {
+  const values = {};
+  $("[data-ts-custom-id]").forEach(input => {
+    const id = input.dataset.tsCustomId;
+    values[id] = input.type === "checkbox" ? input.checked : input.value;
+  });
+  return values;
+}
+
+function renderTimesheetOvertime(report) {
+  const totals = report?.totals || {};
+  $("#ts-ot-month-excess").textContent = totals.month_excess_hours ?? 0;
+  $("#ts-ot-daily-excess").textContent = totals.daily_excess_hours ?? 0;
+  $("#ts-ot-declared").textContent = totals.declared_overtime_hours ?? 0;
+  $("#ts-ot-weekend").textContent = totals.weekend_hours ?? 0;
+  $("#ts-ot-night").textContent = totals.night_hours ?? 0;
+  $("#ts-ot-deficit").textContent = totals.deficit_hours ?? 0;
+  $("#ts-overtime-note").textContent = report?.calculation_basis?.note || "";
+
+  const rows = report?.employees || [];
+  $("#timesheet-overtime-body").innerHTML = rows.map(item => {
+    const balance = Number(item.balance_hours || 0);
+    return '<tr>'+
+      '<td><strong>'+escapeHtml(item.employee.full_name)+'</strong><br><span class="muted">№ '+escapeHtml(item.employee.personnel_number)+'</span></td>'+
+      '<td>'+escapeHtml(item.norm_hours)+'</td>'+
+      '<td>'+escapeHtml(item.actual_hours)+'</td>'+
+      '<td class="'+(balance<0?'ts-negative':balance>0?'ts-positive':'')+'">'+escapeHtml(balance)+'</td>'+
+      '<td>'+escapeHtml(item.declared_overtime_hours)+'</td>'+
+      '<td>'+escapeHtml(item.daily_excess_hours)+'</td>'+
+      '<td class="ts-positive">'+escapeHtml(item.month_excess_hours)+'</td>'+
+      '<td>'+escapeHtml(item.weekend_hours)+'</td>'+
+      '<td>'+escapeHtml(item.night_hours)+'</td>'+
+      '<td class="'+(Number(item.deficit_hours)>0?'ts-negative':'')+'">'+escapeHtml(item.deficit_hours)+'</td>'+
+    '</tr>';
+  }).join('') || '<tr><td colspan="10" class="empty">Нет данных за выбранный месяц</td></tr>';
+}
+
 function renderTimesheetEmployees(items) {
   state.timesheet.employees = items || [];
   const select = $("#ts-entry-employee");
@@ -840,18 +911,23 @@ async function loadTimesheet() {
   ensureTimesheetDefaults();
   const month = $("#timesheet-month")?.value || defaultTimesheetMonth();
   try {
-    const [employeesData, calendarData, summaryData, anomalyData] = await Promise.all([
+    const [employeesData, calendarData, summaryData, overtimeData, anomalyData, customData] = await Promise.all([
       api("/api/work/timesheet/employees?active=true"),
       api("/api/work/timesheet/calendar?month="+encodeURIComponent(month)),
       api("/api/work/timesheet/summary?month="+encodeURIComponent(month)),
+      api("/api/work/timesheet/overtime?month="+encodeURIComponent(month)),
       api("/api/work/timesheet/anomalies?month="+encodeURIComponent(month)),
+      api("/api/work/timesheet/custom-columns"),
     ]);
     renderTimesheetEmployees(employeesData.employees || []);
     state.timesheet.calendar = calendarData.calendar || null;
     state.timesheet.summary = summaryData.summary || null;
+    state.timesheet.overtime = overtimeData.overtime || null;
     state.timesheet.anomalies = anomalyData.anomalies || [];
+    renderTimesheetCustomColumns(customData.columns || []);
     renderTimesheetMatrix(state.timesheet.calendar);
     renderTimesheetSummary(state.timesheet.summary);
+    renderTimesheetOvertime(state.timesheet.overtime);
     renderTimesheetAnomalies(state.timesheet.anomalies);
   } catch (e) {
     toast("Табель: "+e.message, true);
@@ -882,6 +958,30 @@ async function saveTimesheetEmployee() {
   }
 }
 
+async function saveTimesheetCustomColumn() {
+  const label = $("#ts-custom-label").value.trim();
+  if (!label) {
+    toast("Введите название пользовательского поля", true);
+    return;
+  }
+  try {
+    await api("/api/work/timesheet/custom-column/save", {
+      method:"POST",
+      body:JSON.stringify({
+        label,
+        value_type:$("#ts-custom-type").value,
+        sort_order:Number($("#ts-custom-order").value || 100),
+        active:true,
+      }),
+    });
+    $("#ts-custom-label").value = "";
+    toast("Произвольное поле добавлено");
+    await loadTimesheet();
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
 async function saveTimesheetEntry() {
   const employeeId = $("#ts-entry-employee").value;
   if (!employeeId) {
@@ -897,6 +997,7 @@ async function saveTimesheetEntry() {
     overtime_hours: Number($("#ts-entry-overtime").value || 0),
     night_hours: Number($("#ts-entry-night").value || 0),
     note: $("#ts-entry-note").value.trim(),
+    custom_values: collectTimesheetCustomValues(),
     source: "web",
   };
   try {
@@ -924,6 +1025,7 @@ function openTimesheetCell(employeeId, workDate) {
     $("#ts-entry-overtime").value = cell.entry.overtime_hours ?? 0;
     $("#ts-entry-night").value = cell.entry.night_hours ?? 0;
     $("#ts-entry-note").value = cell.entry.note || "";
+    renderTimesheetCustomEntryFields(cell.entry);
   } else {
     $("#ts-entry-status").value = "work";
     $("#ts-entry-planned").value = cell.planned_default ?? 0;
@@ -931,6 +1033,7 @@ function openTimesheetCell(employeeId, workDate) {
     $("#ts-entry-overtime").value = 0;
     $("#ts-entry-night").value = 0;
     $("#ts-entry-note").value = "";
+    renderTimesheetCustomEntryFields(null);
   }
 }
 
@@ -1000,6 +1103,7 @@ $("#timesheet-refresh").addEventListener("click",loadTimesheet);
 $("#timesheet-month").addEventListener("change",loadTimesheet);
 $("#ts-employee-save").addEventListener("click",saveTimesheetEmployee);
 $("#ts-entry-save").addEventListener("click",saveTimesheetEntry);
+$("#ts-custom-save").addEventListener("click",saveTimesheetCustomColumn);
 $("#agent-id").addEventListener("input",loadAgent);
 $("#agent-tool-invoke").addEventListener("click",invokeAgentTool);
 $("#agent-plan-submit").addEventListener("click",submitPlan);

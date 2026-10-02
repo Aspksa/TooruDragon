@@ -21,6 +21,7 @@ STATUS_CODES = {
 
 WORKING_STATUSES = {"work", "remote", "business_trip", "training"}
 NON_WORKING_STATUSES = {"vacation", "sick", "day_off", "absence"}
+CUSTOM_VALUE_TYPES = {"text", "number", "checkbox"}
 
 
 def _now() -> str:
@@ -175,6 +176,95 @@ class TimesheetService:
             item["active"] = bool(item["active"])
         return rows
 
+    def save_custom_column(self, payload: dict) -> dict:
+        label = str(payload.get("label", "")).strip()
+        if not label:
+            raise ValueError("label is required")
+        value_type = str(payload.get("value_type", "text")).strip().lower()
+        if value_type not in CUSTOM_VALUE_TYPES:
+            raise ValueError(
+                "value_type must be one of: " + ", ".join(sorted(CUSTOM_VALUE_TYPES))
+            )
+
+        column_id = str(payload.get("id") or "").strip() or str(uuid4())
+        key = str(payload.get("key") or "").strip() or f"field_{column_id[:8]}"
+        sort_order = int(payload.get("sort_order", 100))
+        active = _as_bool(payload.get("active", True))
+        now = _now()
+
+        existing = self.db.query(
+            "SELECT id FROM work_timesheet_custom_columns WHERE id=?",
+            (column_id,),
+        )
+        if existing:
+            self.db.execute(
+                """
+                UPDATE work_timesheet_custom_columns
+                SET key=?, label=?, value_type=?, sort_order=?, active=?, updated_at=?
+                WHERE id=?
+                """,
+                (
+                    key,
+                    label,
+                    value_type,
+                    sort_order,
+                    1 if active else 0,
+                    now,
+                    column_id,
+                ),
+            )
+        else:
+            self.db.execute(
+                """
+                INSERT INTO work_timesheet_custom_columns(
+                    id, key, label, value_type, sort_order, active,
+                    created_at, updated_at
+                )
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    column_id,
+                    key,
+                    label,
+                    value_type,
+                    sort_order,
+                    1 if active else 0,
+                    now,
+                    now,
+                ),
+            )
+        return self.custom_column(column_id)
+
+    def custom_column(self, column_id: str) -> dict:
+        rows = self.db.query(
+            """
+            SELECT id, key, label, value_type, sort_order, active,
+                   created_at, updated_at
+            FROM work_timesheet_custom_columns
+            WHERE id=?
+            """,
+            (column_id,),
+        )
+        if not rows:
+            raise KeyError(column_id)
+        item = dict(rows[0])
+        item["active"] = bool(item["active"])
+        return item
+
+    def custom_columns(self, *, active_only: bool = True) -> list[dict]:
+        sql = """
+            SELECT id, key, label, value_type, sort_order, active,
+                   created_at, updated_at
+            FROM work_timesheet_custom_columns
+        """
+        if active_only:
+            sql += " WHERE active=1"
+        sql += " ORDER BY sort_order, label, key"
+        rows = self.db.query(sql)
+        for item in rows:
+            item["active"] = bool(item["active"])
+        return rows
+
     def save_entry(self, payload: dict) -> dict:
         employee_id = str(payload.get("employee_id", "")).strip()
         if not employee_id:
@@ -267,6 +357,12 @@ class TimesheetService:
                 ),
             )
 
+        if "custom_values" in payload:
+            self._save_custom_values(
+                entry_id,
+                payload.get("custom_values"),
+            )
+
         return self.entry(entry_id)
 
     def entry(self, entry_id: str) -> dict:
@@ -284,7 +380,9 @@ class TimesheetService:
         )
         if not rows:
             raise KeyError(entry_id)
-        return self._decorate_entry(dict(rows[0]))
+        item = self._decorate_entry(dict(rows[0]))
+        self._attach_custom_values([item])
+        return item
 
     def entries(
         self,
@@ -312,7 +410,9 @@ class TimesheetService:
             """,
             tuple(params),
         )
-        return [self._decorate_entry(dict(item)) for item in rows]
+        items = [self._decorate_entry(dict(item)) for item in rows]
+        self._attach_custom_values(items)
+        return items
 
     def calendar(
         self,
@@ -423,6 +523,99 @@ class TimesheetService:
             "status_codes": STATUS_CODES,
         }
 
+    def overtime_report(self, month: str) -> dict:
+        ctx = self.month_context(month)
+        employees = self.employees(active_only=True)
+        entries = self.entries(month)
+        grouped: dict[str, list[dict]] = {}
+        for item in entries:
+            grouped.setdefault(item["employee_id"], []).append(item)
+
+        totals = {
+            "employees": len(employees),
+            "norm_hours": 0.0,
+            "actual_hours": 0.0,
+            "declared_overtime_hours": 0.0,
+            "daily_excess_hours": 0.0,
+            "month_excess_hours": 0.0,
+            "deficit_hours": 0.0,
+            "weekend_hours": 0.0,
+            "night_hours": 0.0,
+        }
+        people = []
+
+        for employee in employees:
+            items = grouped.get(employee["id"], [])
+            base = self._employee_summary(ctx, employee, items)
+            daily_excess = round(
+                sum(
+                    max(
+                        0.0,
+                        float(item["actual_hours"]) - float(item["planned_hours"]),
+                    )
+                    for item in items
+                    if item["status"] in WORKING_STATUSES
+                ),
+                2,
+            )
+            weekend_hours = round(
+                sum(
+                    float(item["actual_hours"])
+                    for item in items
+                    if item["weekend"]
+                ),
+                2,
+            )
+            month_excess = round(max(0.0, base["balance_hours"]), 2)
+            deficit = round(max(0.0, -base["balance_hours"]), 2)
+            declared = round(float(base["overtime_hours"]), 2)
+
+            row = {
+                "employee": employee,
+                "norm_hours": base["planned_norm_hours"],
+                "actual_hours": base["actual_hours"],
+                "balance_hours": base["balance_hours"],
+                "declared_overtime_hours": declared,
+                "daily_excess_hours": daily_excess,
+                "month_excess_hours": month_excess,
+                "deficit_hours": deficit,
+                "weekend_hours": weekend_hours,
+                "night_hours": base["night_hours"],
+            }
+            people.append(row)
+            for key in totals:
+                if key == "employees":
+                    continue
+                totals[key] += float(row[key])
+
+        for key in totals:
+            if key != "employees":
+                totals[key] = round(float(totals[key]), 2)
+
+        return {
+            "month": month,
+            "totals": totals,
+            "employees": people,
+            "calculation_basis": {
+                "declared_overtime_hours": (
+                    "Сумма поля «Сверхурочно» из записей табеля."
+                ),
+                "daily_excess_hours": (
+                    "Сумма положительного превышения факта над планом по рабочим дням."
+                ),
+                "month_excess_hours": (
+                    "Положительная разница фактических часов и месячной нормы."
+                ),
+                "weekend_hours": (
+                    "Фактические часы в календарные субботу и воскресенье."
+                ),
+                "note": (
+                    "Это учётная аналитика табеля. Она не рассчитывает оплату, "
+                    "коэффициенты или юридическую квалификацию сверхурочной работы."
+                ),
+            },
+        }
+
     def anomalies(self, month: str) -> list[dict]:
         result = []
         for employee in self.summary(month)["employees"]:
@@ -447,6 +640,88 @@ class TimesheetService:
     def month_context(month: str) -> MonthContext:
         start, end = _month_bounds(month)
         return MonthContext(month=month, start=start, end=end)
+
+    def _save_custom_values(self, entry_id: str, values) -> None:
+        if values is None:
+            return
+        if not isinstance(values, dict):
+            raise ValueError("custom_values must be an object")
+
+        columns = {
+            item["id"]: item
+            for item in self.custom_columns(active_only=False)
+        }
+        now = _now()
+        with self.db.connect() as db:
+            for column_id, raw_value in values.items():
+                column_id = str(column_id)
+                column = columns.get(column_id)
+                if column is None:
+                    raise ValueError(f"unknown custom column: {column_id}")
+
+                if raw_value is None:
+                    value_text = ""
+                elif column["value_type"] == "checkbox":
+                    value_text = "1" if _as_bool(raw_value) else "0"
+                elif column["value_type"] == "number":
+                    try:
+                        value_text = str(round(float(raw_value), 4))
+                    except (TypeError, ValueError):
+                        raise ValueError(
+                            f"custom field {column['label']} must be numeric"
+                        )
+                else:
+                    value_text = str(raw_value).strip()
+
+                db.execute(
+                    """
+                    INSERT INTO work_timesheet_custom_values(
+                        entry_id, column_id, value_text, updated_at
+                    )
+                    VALUES(?, ?, ?, ?)
+                    ON CONFLICT(entry_id, column_id) DO UPDATE SET
+                        value_text=excluded.value_text,
+                        updated_at=excluded.updated_at
+                    """,
+                    (entry_id, column_id, value_text, now),
+                )
+
+    def _attach_custom_values(self, items: list[dict]) -> None:
+        if not items:
+            return
+        entry_ids = [item["id"] for item in items]
+        placeholders = ",".join("?" for _ in entry_ids)
+        rows = self.db.query(
+            f"""
+            SELECT v.entry_id, v.column_id, v.value_text,
+                   c.key, c.label, c.value_type, c.sort_order
+            FROM work_timesheet_custom_values v
+            JOIN work_timesheet_custom_columns c ON c.id=v.column_id
+            WHERE v.entry_id IN ({placeholders})
+            ORDER BY c.sort_order, c.label
+            """,
+            tuple(entry_ids),
+        )
+        grouped: dict[str, dict] = {entry_id: {} for entry_id in entry_ids}
+        for row in rows:
+            value = row["value_text"]
+            if row["value_type"] == "checkbox":
+                value = value == "1"
+            elif row["value_type"] == "number" and value != "":
+                try:
+                    value = float(value)
+                except ValueError:
+                    pass
+            grouped[row["entry_id"]][row["column_id"]] = {
+                "column_id": row["column_id"],
+                "key": row["key"],
+                "label": row["label"],
+                "value_type": row["value_type"],
+                "value": value,
+            }
+
+        for item in items:
+            item["custom_values"] = grouped.get(item["id"], {})
 
     @staticmethod
     def _decorate_entry(item: dict) -> dict:
