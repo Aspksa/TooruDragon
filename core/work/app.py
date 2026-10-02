@@ -9,6 +9,7 @@ sys.path.insert(0, str(ROOT))
 
 from core.system import CoreRuntime, Route
 from core.work.documents import DOCUMENT_TYPES, DocumentIntelligenceService
+from core.work.garage import GarageFuelService
 from core.work.timesheet import STATUS_CODES, TimesheetService
 
 CAPABILITIES = [
@@ -25,6 +26,11 @@ CAPABILITIES = [
     "document_dna",
     "document_versioning",
     "document_graph",
+    "garage",
+    "fuel_cards",
+    "waybills",
+    "fuel_statements",
+    "fuel_reconciliation",
 ]
 
 runtime = CoreRuntime(
@@ -34,6 +40,7 @@ runtime = CoreRuntime(
 )
 timesheet = TimesheetService(runtime.db)
 documents = DocumentIntelligenceService(runtime.db)
+garage = GarageFuelService(runtime.db)
 
 
 def capabilities(_request):
@@ -165,6 +172,33 @@ def document_file_ingest(request):
         status="duplicate" if item.get("duplicate") else "studied",
         document_id=item["id"],
     )
+    fuel_import = None
+    if item["document_type"] == "fuel_statement" and not item.get("duplicate"):
+        try:
+            fuel_import = {
+                "ok": True,
+                "statement": garage.import_fuel_statement(
+                    document_id=item["id"],
+                    original_name=filename,
+                    content_base64=str(payload.get("content_base64") or ""),
+                ),
+            }
+        except ValueError as exc:
+            item = documents.record_issue(
+                item["id"],
+                "fuel_statement_import_failed",
+                "error",
+                "Выписка ГСМ сохранена, но операции не удалось импортировать в гараж.",
+                {
+                    "error_type": type(exc).__name__,
+                    "message": str(exc),
+                },
+            )
+            fuel_import = {
+                "ok": False,
+                "message": str(exc),
+            }
+
     runtime.events.publish(
         "work.document.file_ingested",
         "work",
@@ -175,9 +209,18 @@ def document_file_ingest(request):
             "version": item["version"],
             "duplicate": bool(item.get("duplicate")),
             "issue_count": len(item.get("issues", [])),
+            "fuel_import_ok": (
+                fuel_import.get("ok")
+                if isinstance(fuel_import, dict)
+                else None
+            ),
         },
     )
-    return 200, {"service": "work", "document": item}
+    return 200, {
+        "service": "work",
+        "document": item,
+        "fuel_import": fuel_import,
+    }
 
 
 def document_ingest(request):
@@ -265,6 +308,195 @@ def document_archive(request):
     return 200, {"service": "work", "document": item}
 
 
+def garage_status(_request):
+    return 200, {
+        "service": "work",
+        "garage": {
+            "enabled": True,
+            "features": [
+                "vehicles",
+                "driver_vehicle_history",
+                "fuel_cards",
+                "waybills",
+                "fuel_statement_import",
+                "monthly_fuel_reconciliation",
+            ],
+        },
+    }
+
+
+def garage_stats(_request):
+    return 200, {"service": "work", "stats": garage.stats()}
+
+
+def garage_employees(_request):
+    return 200, {
+        "service": "work",
+        "employees": garage.employee_directory(),
+    }
+
+
+def garage_vehicles(_request):
+    return 200, {
+        "service": "work",
+        "vehicles": garage.vehicles(active_only=False),
+    }
+
+
+def garage_vehicle_save(request):
+    payload = request.json if isinstance(request.json, dict) else {}
+    try:
+        item = garage.save_vehicle(payload)
+    except ValueError as exc:
+        return 400, {"error": "invalid_vehicle", "message": str(exc)}
+    except Exception as exc:
+        if exc.__class__.__name__ == "IntegrityError":
+            return 409, {
+                "error": "vehicle_conflict",
+                "message": "Госномер или VIN уже используется",
+            }
+        raise
+    runtime.events.publish(
+        "work.garage.vehicle.saved",
+        "work",
+        {
+            "vehicle_id": item["id"],
+            "registration_number": item["registration_number"],
+        },
+    )
+    return 200, {"service": "work", "vehicle": item}
+
+
+def garage_fuel_card_assign(request):
+    payload = request.json if isinstance(request.json, dict) else {}
+    employee_id = str(payload.get("employee_id") or "").strip()
+    if not employee_id:
+        return 400, {"error": "employee_id_required"}
+    try:
+        item = garage.set_employee_fuel_card(
+            employee_id,
+            str(payload.get("card_number") or ""),
+            valid_from=str(payload.get("valid_from") or "").strip() or None,
+            source="garage",
+        )
+    except KeyError:
+        return 404, {"error": "employee_not_found"}
+    except ValueError as exc:
+        return 409, {"error": "fuel_card_conflict", "message": str(exc)}
+    runtime.events.publish(
+        "work.garage.fuel_card.assigned",
+        "work",
+        {
+            "employee_id": employee_id,
+            "card_number": item["card_number"],
+        },
+    )
+    return 200, {"service": "work", "fuel_card": item}
+
+
+def garage_driver_vehicle_assign(request):
+    payload = request.json if isinstance(request.json, dict) else {}
+    employee_id = str(payload.get("employee_id") or "").strip()
+    vehicle_id = str(payload.get("vehicle_id") or "").strip()
+    if not employee_id or not vehicle_id:
+        return 400, {"error": "employee_and_vehicle_required"}
+    try:
+        item = garage.assign_driver_vehicle(
+            employee_id,
+            vehicle_id,
+            valid_from=str(payload.get("valid_from") or "").strip() or None,
+            source="garage",
+            note=str(payload.get("note") or ""),
+        )
+    except KeyError:
+        return 404, {"error": "employee_or_vehicle_not_found"}
+    except ValueError as exc:
+        return 400, {"error": "invalid_assignment", "message": str(exc)}
+    runtime.events.publish(
+        "work.garage.driver_vehicle.assigned",
+        "work",
+        {
+            "employee_id": employee_id,
+            "vehicle_id": vehicle_id,
+        },
+    )
+    return 200, {"service": "work", "assignment": item}
+
+
+def garage_waybills(request):
+    month = str(request.query.get("month", [""])[0]).strip()
+    if not month:
+        month = date.today().strftime("%Y-%m")
+    try:
+        items = garage.waybills(month)
+    except ValueError as exc:
+        return 400, {"error": "invalid_month", "message": str(exc)}
+    return 200, {"service": "work", "month": month, "waybills": items}
+
+
+def garage_waybill_save(request):
+    payload = request.json if isinstance(request.json, dict) else {}
+    try:
+        item = garage.save_waybill(payload)
+    except KeyError:
+        return 404, {"error": "employee_or_vehicle_not_found"}
+    except ValueError as exc:
+        return 400, {"error": "invalid_waybill", "message": str(exc)}
+    runtime.events.publish(
+        "work.garage.waybill.saved",
+        "work",
+        {
+            "waybill_id": item["id"],
+            "trip_date": item["trip_date"],
+            "employee_id": item["employee_id"],
+            "vehicle_id": item["vehicle_id"],
+            "consumption_l": item["actual_consumption_l"],
+        },
+    )
+    return 200, {"service": "work", "waybill": item}
+
+
+def garage_fuel_statements(_request):
+    return 200, {
+        "service": "work",
+        "statements": garage.statements(),
+    }
+
+
+def garage_fuel_unresolved(request):
+    month = str(request.query.get("month", [""])[0]).strip() or None
+    try:
+        items = garage.unresolved_cards(month)
+    except ValueError as exc:
+        return 400, {"error": "invalid_month", "message": str(exc)}
+    return 200, {
+        "service": "work",
+        "month": month,
+        "unresolved_cards": items,
+    }
+
+
+def garage_fuel_summary(request):
+    month = str(request.query.get("month", [""])[0]).strip()
+    if not month:
+        month = date.today().strftime("%Y-%m")
+    try:
+        data = garage.monthly_summary(month)
+    except ValueError as exc:
+        return 400, {"error": "invalid_month", "message": str(exc)}
+    return 200, {"service": "work", "summary": data}
+
+
+def garage_fuel_reconcile(_request):
+    result = garage.reconcile_transactions()
+    runtime.events.publish(
+        "work.garage.fuel.reconciled",
+        "work",
+        result,
+    )
+    return 200, {"service": "work", "result": result}
+
+
 def timesheet_status(_request):
     return 200, {
         "service": "work",
@@ -310,12 +542,30 @@ def employee_save(request):
             }
         raise
 
+    fuel_card_number = str(payload.get("fuel_card_number") or "").strip()
+    if fuel_card_number:
+        try:
+            garage.set_employee_fuel_card(
+                item["id"],
+                fuel_card_number,
+                valid_from=str(payload.get("fuel_card_valid_from") or "").strip() or None,
+                source="employee_directory",
+            )
+            item = timesheet.employee(item["id"])
+        except ValueError as exc:
+            return 409, {
+                "error": "fuel_card_conflict",
+                "message": str(exc),
+                "employee": item,
+            }
+
     runtime.events.publish(
         "work.timesheet.employee.saved",
         "work",
         {
             "employee_id": item["id"],
             "personnel_number": item["personnel_number"],
+            "fuel_card_number": item.get("fuel_card_number"),
         },
     )
     return 200, {"service": "work", "employee": item}
@@ -485,6 +735,48 @@ if __name__ == "__main__":
         ),
         "/documents/archive": Route(
             document_archive,
+            method="POST",
+            protected=True,
+        ),
+        "/garage/status": Route(garage_status, protected=False),
+        "/garage/stats": Route(garage_stats, protected=True),
+        "/garage/employees": Route(garage_employees, protected=True),
+        "/garage/vehicles": Route(garage_vehicles, protected=True),
+        "/garage/vehicle/save": Route(
+            garage_vehicle_save,
+            method="POST",
+            protected=True,
+        ),
+        "/garage/fuel-card/assign": Route(
+            garage_fuel_card_assign,
+            method="POST",
+            protected=True,
+        ),
+        "/garage/driver-vehicle/assign": Route(
+            garage_driver_vehicle_assign,
+            method="POST",
+            protected=True,
+        ),
+        "/garage/waybills": Route(garage_waybills, protected=True),
+        "/garage/waybill/save": Route(
+            garage_waybill_save,
+            method="POST",
+            protected=True,
+        ),
+        "/garage/fuel/statements": Route(
+            garage_fuel_statements,
+            protected=True,
+        ),
+        "/garage/fuel/unresolved": Route(
+            garage_fuel_unresolved,
+            protected=True,
+        ),
+        "/garage/fuel/summary": Route(
+            garage_fuel_summary,
+            protected=True,
+        ),
+        "/garage/fuel/reconcile": Route(
+            garage_fuel_reconcile,
             method="POST",
             protected=True,
         ),
