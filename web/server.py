@@ -201,6 +201,12 @@ def _build_machine_report(fetcher=None) -> dict:
         "ai.reasoning": ("tooru_ai", "/reasoning/stats"),
         "ai.conversations": ("tooru_ai", "/conversations?limit=100"),
         "ai.rag_documents": ("tooru_ai", "/rag/documents?limit=200"),
+        "work.health": ("work", "/health"),
+        "work.timesheet_status": ("work", "/timesheet/status"),
+        "work.timesheet_summary": (
+            "work",
+            f"/timesheet/summary?month={datetime.now(timezone.utc).strftime('%Y-%m')}",
+        ),
         "supervisor.health": ("supervisor", "/health"),
         "supervisor.status": ("supervisor", "/status"),
         "supervisor.deployments": ("supervisor", "/deployments"),
