@@ -205,3 +205,55 @@ CREATE TABLE IF NOT EXISTS ai_document_chunks (
 
 CREATE INDEX IF NOT EXISTS idx_ai_document_chunks_document
 ON ai_document_chunks(document_id, chunk_index);
+
+
+CREATE TABLE IF NOT EXISTS reasoning_runs (
+    id TEXT PRIMARY KEY,
+    trace_id TEXT,
+    mode TEXT NOT NULL,
+    score INTEGER NOT NULL,
+    threshold INTEGER NOT NULL,
+    branch_count INTEGER NOT NULL DEFAULT 0,
+    depth INTEGER NOT NULL DEFAULT 1,
+    contradiction_detected INTEGER NOT NULL DEFAULT 0,
+    fallback INTEGER NOT NULL DEFAULT 0,
+    branch_names_json TEXT NOT NULL DEFAULT '[]',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    feedback_score REAL,
+    feedback_source TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_reasoning_runs_created
+ON reasoning_runs(created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_reasoning_runs_trace
+ON reasoning_runs(trace_id);
+
+CREATE TABLE IF NOT EXISTS reasoning_run_branches (
+    run_id TEXT NOT NULL,
+    branch_name TEXT NOT NULL,
+    status TEXT NOT NULL,
+    PRIMARY KEY(run_id, branch_name),
+    FOREIGN KEY(run_id) REFERENCES reasoning_runs(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS reasoning_branch_stats (
+    branch_name TEXT PRIMARY KEY,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    completed INTEGER NOT NULL DEFAULT 0,
+    failures INTEGER NOT NULL DEFAULT 0,
+    feedback_count INTEGER NOT NULL DEFAULT 0,
+    feedback_sum REAL NOT NULL DEFAULT 0.0,
+    weight REAL NOT NULL DEFAULT 1.0,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS reasoning_mode_stats (
+    mode TEXT PRIMARY KEY,
+    runs INTEGER NOT NULL DEFAULT 0,
+    feedback_count INTEGER NOT NULL DEFAULT 0,
+    feedback_sum REAL NOT NULL DEFAULT 0.0,
+    updated_at TEXT NOT NULL
+);
