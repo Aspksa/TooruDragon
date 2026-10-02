@@ -1330,7 +1330,10 @@ class DocumentIntelligenceService:
                 "Не удалось определить год для автоматической сортировки служебной записки.",
             )
 
-        filename_year = re.search(r"\b(19\d{2}|20\d{2})\b", doc.get("original_name") or "")
+        filename_year = re.search(
+            r"(?<!\d)(19\d{2}|20\d{2})(?!\d)",
+            doc.get("original_name") or "",
+        )
         if filename_year and doc.get("year") and int(filename_year.group(1)) != int(doc["year"]):
             issue(
                 "filename_year_conflict",
@@ -1370,11 +1373,11 @@ class DocumentIntelligenceService:
             for item in facts
             if item["fact_type"] == "vehicle"
         }
-        references = {
-            item["normalized_value"]
+        reference_facts = [
+            item
             for item in facts
             if item["fact_type"] == "reference"
-        }
+        ]
 
         for value in vehicle_values:
             rows = self.db.query(
@@ -1396,7 +1399,7 @@ class DocumentIntelligenceService:
                     {"normalized_value": value},
                 )
 
-        if references:
+        if reference_facts:
             candidates = self.db.query(
                 """
                 SELECT id, document_number, document_type
@@ -1405,15 +1408,54 @@ class DocumentIntelligenceService:
                 """,
                 (document_id,),
             )
-            for candidate in candidates:
-                number = _normalized_value(candidate["document_number"])
-                if any(number and number in reference for reference in references):
+            type_map = {
+                "договор": "contract",
+                "контракт": "contract",
+                "приказ": "order",
+                "акт": "act",
+                "счет": "invoice",
+                "счёт": "invoice",
+                "счет-оферта": "invoice_offer",
+                "счёт-оферта": "invoice_offer",
+            }
+            for fact in reference_facts:
+                normalized = fact["normalized_value"]
+                key = str(fact["fact_key"]).lower()
+                prefixes = (
+                    "ДОГОВОР",
+                    "КОНТРАКТ",
+                    "ПРИКАЗ",
+                    "АКТ",
+                    "СЧЕТ-ОФЕРТА",
+                    "СЧЁТ-ОФЕРТА",
+                    "СЧЕТ",
+                    "СЧЁТ",
+                )
+                referenced_number = normalized
+                for prefix in prefixes:
+                    if normalized.startswith(prefix):
+                        referenced_number = normalized[len(prefix):]
+                        break
+                if not referenced_number:
+                    continue
+
+                expected_type = type_map.get(key)
+                for candidate in candidates:
+                    number = _normalized_value(candidate["document_number"])
+                    if number != referenced_number:
+                        continue
+                    if expected_type and candidate["document_type"] != expected_type:
+                        continue
                     self._upsert_relation(
                         document_id,
                         candidate["id"],
                         "references",
-                        0.97,
-                        {"document_number": candidate["document_number"]},
+                        0.99,
+                        {
+                            "document_number": candidate["document_number"],
+                            "reference_key": key,
+                            "reference_value": fact["value_text"],
+                        },
                     )
 
     def _cross_document_checks(self, document_id: str) -> None:
