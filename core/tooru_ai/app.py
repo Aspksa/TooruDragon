@@ -23,6 +23,7 @@ CAPABILITIES = [
     "chat_runtime",
     "retrieval",
     "hybrid_reasoning",
+    "adaptive_reasoning",
 ]
 
 runtime = CoreRuntime(
@@ -59,6 +60,22 @@ chat_runtime = ChatRuntime(
         reasoning_max_branches=int(reasoning_cfg.get("max_branches", 3)),
         reasoning_branch_max_tokens=int(
             reasoning_cfg.get("branch_max_tokens", 512)
+        ),
+        reasoning_adaptive_enabled=bool(
+            reasoning_cfg.get("adaptive_enabled", True)
+        ),
+        reasoning_max_depth=int(reasoning_cfg.get("max_depth", 3)),
+        reasoning_learning_rate=float(
+            reasoning_cfg.get("learning_rate", 0.15)
+        ),
+        reasoning_min_branch_weight=float(
+            reasoning_cfg.get("min_branch_weight", 0.5)
+        ),
+        reasoning_max_branch_weight=float(
+            reasoning_cfg.get("max_branch_weight", 1.5)
+        ),
+        reasoning_feedback_min_samples=int(
+            reasoning_cfg.get("feedback_min_samples", 3)
         ),
     ),
     rag=rag,
@@ -300,6 +317,39 @@ def rag_documents(request):
     }
 
 
+def reasoning_stats(_request):
+    return 200, {
+        "service": "tooru_ai",
+        "reasoning": chat_runtime.reasoning_stats(),
+    }
+
+
+def reasoning_feedback(request):
+    payload = request.json if isinstance(request.json, dict) else {}
+    run_id = str(payload.get("run_id", "")).strip()
+    if not run_id:
+        return 400, {"error": "run_id_required"}
+    try:
+        score = float(payload.get("score"))
+        result = chat_runtime.reasoning_feedback(
+            run_id,
+            score,
+            source=str(payload.get("source", "user")),
+        )
+    except KeyError:
+        return 404, {"error": "reasoning_run_not_found", "run_id": run_id}
+    except (ValueError, TypeError) as exc:
+        return 400, {
+            "error": "invalid_reasoning_feedback",
+            "message": str(exc),
+        }
+
+    return 200, {
+        "service": "tooru_ai",
+        "reasoning_run": result,
+    }
+
+
 def memory_search(request):
     query = str(request.query.get("q", [""])[0]).strip()
     if not query:
@@ -333,6 +383,12 @@ if __name__ == "__main__":
         "/conversation": Route(conversation, protected=True),
         "/memory/remember": Route(memory_remember, method="POST", protected=True),
         "/memory/search": Route(memory_search, protected=True),
+        "/reasoning/stats": Route(reasoning_stats, protected=True),
+        "/reasoning/feedback": Route(
+            reasoning_feedback,
+            method="POST",
+            protected=True,
+        ),
         "/rag/ingest": Route(rag_ingest, method="POST", protected=True),
         "/rag/search": Route(rag_search, protected=True),
         "/rag/documents": Route(rag_documents, protected=True),

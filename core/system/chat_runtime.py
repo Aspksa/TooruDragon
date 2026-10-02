@@ -7,6 +7,7 @@ from .ai_memory import AIMemoryStore
 from .model_router import ModelProviderError, ModelRouter
 from .rag import RAGIndex
 from .reasoning import HybridReasoningEngine, ReasoningConfig
+from .reasoning_learning import AdaptiveReasoningStore
 
 
 @dataclass(frozen=True)
@@ -20,6 +21,12 @@ class ChatConfig:
     reasoning_tree_threshold: int = 4
     reasoning_max_branches: int = 3
     reasoning_branch_max_tokens: int = 512
+    reasoning_adaptive_enabled: bool = True
+    reasoning_max_depth: int = 3
+    reasoning_learning_rate: float = 0.15
+    reasoning_min_branch_weight: float = 0.5
+    reasoning_max_branch_weight: float = 1.5
+    reasoning_feedback_min_samples: int = 3
 
 
 class ChatRuntime:
@@ -34,13 +41,27 @@ class ChatRuntime:
         self.memory = memory
         self.config = config
         self.rag = rag
+
+        reasoning_store = AdaptiveReasoningStore(
+            memory.db,
+            learning_rate=config.reasoning_learning_rate,
+            min_weight=config.reasoning_min_branch_weight,
+            max_weight=config.reasoning_max_branch_weight,
+        )
         self.reasoning = HybridReasoningEngine(
             ReasoningConfig(
                 mode=config.reasoning_mode,
                 tree_threshold=config.reasoning_tree_threshold,
                 max_branches=config.reasoning_max_branches,
                 branch_max_tokens=config.reasoning_branch_max_tokens,
-            )
+                adaptive_enabled=config.reasoning_adaptive_enabled,
+                max_depth=config.reasoning_max_depth,
+                learning_rate=config.reasoning_learning_rate,
+                min_branch_weight=config.reasoning_min_branch_weight,
+                max_branch_weight=config.reasoning_max_branch_weight,
+                feedback_min_samples=config.reasoning_feedback_min_samples,
+            ),
+            store=reasoning_store,
         )
 
     def chat(
@@ -131,6 +152,7 @@ class ChatRuntime:
             model=model,
             temperature=temperature,
             max_tokens=max_tokens,
+            trace_id=trace_id,
         )
 
         exchange = self.memory.add_exchange(
@@ -144,6 +166,7 @@ class ChatRuntime:
                 "retrieved_memory_ids": [item["id"] for item in memories],
                 "retrieved_rag_chunk_ids": [item["id"] for item in rag_chunks],
                 "reasoning_mode": reasoning["mode"],
+                "reasoning_run_id": reasoning.get("run_id"),
             },
             assistant_metadata={
                 "finish_reason": result.get("finish_reason"),
@@ -194,6 +217,22 @@ class ChatRuntime:
             scope=scope or self.config.memory_scope,
             limit=limit or self.config.retrieval_limit,
         )
+
+    def reasoning_feedback(
+        self,
+        run_id: str,
+        score: float,
+        *,
+        source: str = "user",
+    ) -> dict:
+        return self.reasoning.record_feedback(
+            run_id,
+            score,
+            source=source,
+        )
+
+    def reasoning_stats(self) -> dict:
+        return self.reasoning.learning_stats()
 
     def status(self) -> dict:
         return {
