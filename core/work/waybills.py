@@ -221,6 +221,7 @@ class WaybillAutomationService:
         result["received_chunks"] = total
         result["total_chunks"] = total
         result["complete"] = True
+        shutil.rmtree(root, ignore_errors=True)
         return result
 
     def upload_bytes(
