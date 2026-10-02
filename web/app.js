@@ -677,10 +677,23 @@ const documentTypeLabels = {
 function renderDocumentStats(stats) {
   const docs = stats?.documents || {};
   const issues = stats?.open_issues || {};
+  const ingest = stats?.ingest || {};
+  const failedCount = Number(ingest?.by_status?.failed || 0);
   $("#doc-metric-active").textContent = docs.active ?? 0;
   $("#doc-metric-archived").textContent = docs.archived ?? 0;
-  $("#doc-metric-errors").textContent = issues.error ?? 0;
+  $("#doc-metric-errors").textContent = Number(issues.error || 0) + failedCount;
   $("#doc-metric-warnings").textContent = issues.warning ?? 0;
+
+  const failures = ingest?.recent_failures || [];
+  $("#document-ingest-failure-badge").textContent = failures.length;
+  $("#document-ingest-failure-badge").className = "status-pill " + (failures.length ? "" : "online");
+  $("#document-ingest-failures").innerHTML = failures.map(item =>
+    '<div class="document-issue error">'+
+      '<div><strong>'+escapeHtml(item.filename || "Без имени")+'</strong> · '+escapeHtml(item.error_type || "error")+'</div>'+
+      '<div>'+escapeHtml(item.message || "Не удалось изучить документ")+'</div>'+
+      '<small>'+escapeHtml((item.created_at || "").replace("T"," ").slice(0,19))+'</small>'+
+    '</div>'
+  ).join("") || '<div class="empty">Неудачных загрузок нет.</div>';
 }
 
 function renderDocumentsList(items) {
