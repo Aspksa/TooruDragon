@@ -65,6 +65,8 @@ GET_ALLOWLIST = {
         "/timesheet/entries",
         "/timesheet/calendar",
         "/timesheet/summary",
+        "/timesheet/overtime",
+        "/timesheet/custom-columns",
         "/timesheet/anomalies",
     ),
     "supervisor": (
@@ -99,6 +101,7 @@ POST_ALLOWLIST = {
     "work": (
         "/timesheet/employee/save",
         "/timesheet/entry/save",
+        "/timesheet/custom-column/save",
     ),
     "supervisor": (
         "/core/action",
