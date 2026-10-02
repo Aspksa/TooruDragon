@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from core.system import CoreRuntime, Route
+from core.work.documents import DOCUMENT_TYPES, DocumentIntelligenceService
 from core.work.timesheet import STATUS_CODES, TimesheetService
 
 CAPABILITIES = [
@@ -19,6 +20,11 @@ CAPABILITIES = [
     "timesheet_analytics",
     "timesheet_custom_fields",
     "timesheet_overtime_analytics",
+    "document_intelligence",
+    "document_passport",
+    "document_dna",
+    "document_versioning",
+    "document_graph",
 ]
 
 runtime = CoreRuntime(
@@ -27,6 +33,7 @@ runtime = CoreRuntime(
     capabilities=CAPABILITIES,
 )
 timesheet = TimesheetService(runtime.db)
+documents = DocumentIntelligenceService(runtime.db)
 
 
 def capabilities(_request):
@@ -34,6 +41,145 @@ def capabilities(_request):
         "service": "work",
         "capabilities": CAPABILITIES,
     }
+
+
+def documents_status(_request):
+    return 200, {
+        "service": "work",
+        "documents": {
+            "enabled": True,
+            "types": DOCUMENT_TYPES,
+            "features": [
+                "automatic_classification",
+                "passport",
+                "dna",
+                "fact_provenance",
+                "versioning",
+                "deduplication",
+                "logical_year_archive",
+                "relations",
+                "contradiction_checks",
+                "rag_indexing",
+                "safe_archive",
+            ],
+        },
+    }
+
+
+def documents_list(request):
+    document_type = str(request.query.get("type", [""])[0]).strip() or None
+    status = str(request.query.get("status", [""])[0]).strip() or None
+    year_raw = str(request.query.get("year", [""])[0]).strip()
+    include_archived = str(
+        request.query.get("include_archived", [""])[0]
+    ).lower() in {"1", "true", "yes"}
+    try:
+        year = int(year_raw) if year_raw else None
+        limit = int(request.query.get("limit", ["100"])[0])
+        items = documents.documents(
+            limit=limit,
+            document_type=document_type,
+            status=status,
+            year=year,
+            include_archived=include_archived,
+        )
+    except ValueError as exc:
+        return 400, {"error": "invalid_document_filter", "message": str(exc)}
+    return 200, {"service": "work", "documents": items}
+
+
+def document_get(request):
+    document_id = str(request.query.get("id", [""])[0]).strip()
+    if not document_id:
+        return 400, {"error": "document_id_required"}
+    try:
+        item = documents.document(document_id)
+    except KeyError:
+        return 404, {"error": "document_not_found"}
+    return 200, {"service": "work", "document": item}
+
+
+def document_search(request):
+    query = str(request.query.get("q", [""])[0]).strip()
+    if not query:
+        return 200, {"service": "work", "documents": []}
+    try:
+        limit = int(request.query.get("limit", ["50"])[0])
+    except ValueError:
+        return 400, {"error": "invalid_limit"}
+    return 200, {
+        "service": "work",
+        "documents": documents.search(query, limit=limit),
+    }
+
+
+def document_graph(_request):
+    return 200, {
+        "service": "work",
+        "graph": documents.graph(),
+    }
+
+
+def document_stats(_request):
+    return 200, {
+        "service": "work",
+        "stats": documents.stats(),
+    }
+
+
+def document_ingest(request):
+    payload = request.json if isinstance(request.json, dict) else {}
+    try:
+        item = documents.ingest(payload)
+    except ValueError as exc:
+        return 400, {"error": "invalid_document", "message": str(exc)}
+
+    runtime.events.publish(
+        "work.document.ingested",
+        "work",
+        {
+            "document_id": item["id"],
+            "document_type": item["document_type"],
+            "version": item["version"],
+            "duplicate": bool(item.get("duplicate")),
+            "issue_count": len(item.get("issues", [])),
+        },
+    )
+    return 200, {"service": "work", "document": item}
+
+
+def document_reanalyze(request):
+    payload = request.json if isinstance(request.json, dict) else {}
+    document_id = str(payload.get("document_id", "")).strip()
+    if not document_id:
+        return 400, {"error": "document_id_required"}
+    try:
+        item = documents.reanalyze(document_id)
+    except KeyError:
+        return 404, {"error": "document_not_found"}
+    runtime.events.publish(
+        "work.document.reanalyzed",
+        "work",
+        {"document_id": document_id, "issue_count": len(item.get("issues", []))},
+    )
+    return 200, {"service": "work", "document": item}
+
+
+def document_archive(request):
+    payload = request.json if isinstance(request.json, dict) else {}
+    document_id = str(payload.get("document_id", "")).strip()
+    if not document_id:
+        return 400, {"error": "document_id_required"}
+    try:
+        item = documents.archive(document_id)
+    except KeyError:
+        return 404, {"error": "document_not_found"}
+    runtime.events.publish(
+        "work.document.archived",
+        "work",
+        {"document_id": document_id},
+    )
+    return 200, {"service": "work", "document": item}
 
 
 def timesheet_status(_request):
@@ -224,6 +370,27 @@ def month_anomalies(request):
 if __name__ == "__main__":
     runtime.run({
         "/capabilities": Route(capabilities, protected=False),
+        "/documents/status": Route(documents_status, protected=False),
+        "/documents": Route(documents_list, protected=True),
+        "/documents/get": Route(document_get, protected=True),
+        "/documents/search": Route(document_search, protected=True),
+        "/documents/graph": Route(document_graph, protected=True),
+        "/documents/stats": Route(document_stats, protected=True),
+        "/documents/ingest": Route(
+            document_ingest,
+            method="POST",
+            protected=True,
+        ),
+        "/documents/reanalyze": Route(
+            document_reanalyze,
+            method="POST",
+            protected=True,
+        ),
+        "/documents/archive": Route(
+            document_archive,
+            method="POST",
+            protected=True,
+        ),
         "/timesheet/status": Route(timesheet_status, protected=False),
         "/timesheet/employees": Route(employees, protected=True),
         "/timesheet/custom-columns": Route(custom_columns, protected=True),
