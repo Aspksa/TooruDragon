@@ -1505,8 +1505,19 @@ class WaybillAutomationService:
                         "waybill_liters": recognized_refuel,
                     },
                 )
+            vehicle = (
+                self.garage.vehicle(waybill["vehicle_id"])
+                if waybill.get("vehicle_id")
+                else None
+            )
+            tank_capacity = (
+                float(vehicle["tank_capacity_l"])
+                if vehicle and vehicle.get("tank_capacity_l") is not None
+                else None
+            )
             for tx in transactions:
-                if float(tx.get("quantity_l") or 0) > 120:
+                quantity = float(tx.get("quantity_l") or 0)
+                if quantity > 120:
                     self._anomaly(
                         waybill["id"],
                         "suspicious_refuel_volume",
@@ -1516,6 +1527,44 @@ class WaybillAutomationService:
                             "transaction_id": tx["id"],
                             "quantity_l": tx["quantity_l"],
                         },
+                    )
+                if tank_capacity is not None and quantity > tank_capacity:
+                    self._anomaly(
+                        waybill["id"],
+                        "refuel_exceeds_tank_capacity",
+                        "error",
+                        "Объём заправки превышает указанную вместимость бака автомобиля.",
+                        {
+                            "transaction_id": tx["id"],
+                            "quantity_l": quantity,
+                            "tank_capacity_l": tank_capacity,
+                        },
+                    )
+                if tx.get("card_number"):
+                    self._relation(
+                        "fuel_card",
+                        tx["card_number"],
+                        "has_refuel",
+                        "fuel_transaction",
+                        tx["id"],
+                        source_document_id=tx.get("document_id"),
+                        confidence=1.0,
+                        evidence={
+                            "operation_date": tx.get("operation_date"),
+                            "quantity_l": quantity,
+                        },
+                    )
+                if tx.get("operation_date"):
+                    period = tx["operation_date"][:7]
+                    self._relation(
+                        "fuel_transaction",
+                        tx["id"],
+                        "belongs_to_period",
+                        "period",
+                        period,
+                        source_document_id=tx.get("document_id"),
+                        confidence=1.0,
+                        evidence={"operation_date": tx["operation_date"]},
                     )
 
         # Statement transaction without a matching waybill on the same day.
@@ -2392,6 +2441,91 @@ class WaybillAutomationService:
             item["resolved"] = bool(item["resolved"])
             item["details"] = json.loads(item.pop("details_json") or "{}")
         return rows
+
+    def monthly_mileage_summary(self, month: str) -> dict:
+        try:
+            year, month_no = map(int, month.split("-"))
+            start = date(year, month_no, 1)
+            end = date(
+                year,
+                month_no,
+                calendar.monthrange(year, month_no)[1],
+            )
+        except (ValueError, TypeError) as exc:
+            raise ValueError("month must use YYYY-MM format") from exc
+
+        vehicles = self.db.query(
+            """
+            SELECT DISTINCT vehicle_id
+            FROM garage_waybills
+            WHERE trip_date BETWEEN ? AND ?
+              AND vehicle_id IS NOT NULL
+            ORDER BY vehicle_id
+            """,
+            (start.isoformat(), end.isoformat()),
+        )
+        result = []
+        for ref in vehicles:
+            rows = self.db.query(
+                """
+                SELECT id, trip_date, waybill_number, odometer_start,
+                       odometer_end, distance_km
+                FROM garage_waybills
+                WHERE vehicle_id=?
+                  AND trip_date BETWEEN ? AND ?
+                  AND odometer_start IS NOT NULL
+                  AND odometer_end IS NOT NULL
+                ORDER BY trip_date, created_at
+                """,
+                (ref["vehicle_id"], start.isoformat(), end.isoformat()),
+            )
+            if not rows:
+                continue
+            first = rows[0]
+            last = rows[-1]
+            mileage = max(
+                0.0,
+                round(
+                    float(last["odometer_end"])
+                    - float(first["odometer_start"]),
+                    3,
+                ),
+            )
+            gaps = []
+            previous = None
+            for row in rows:
+                if previous is not None:
+                    difference = round(
+                        float(row["odometer_start"])
+                        - float(previous["odometer_end"]),
+                        3,
+                    )
+                    if abs(difference) > 1.0:
+                        gaps.append({
+                            "previous_waybill_id": previous["id"],
+                            "waybill_id": row["id"],
+                            "difference": difference,
+                        })
+                previous = row
+            vehicle = self.garage.vehicle(ref["vehicle_id"])
+            result.append({
+                "vehicle_id": ref["vehicle_id"],
+                "registration_number": vehicle["registration_number"],
+                "make": vehicle.get("make") or "",
+                "model": vehicle.get("model") or "",
+                "first_waybill_id": first["id"],
+                "last_waybill_id": last["id"],
+                "first_odometer": first["odometer_start"],
+                "last_odometer": last["odometer_end"],
+                "monthly_mileage_km": mileage,
+                "sum_waybill_distance_km": round(
+                    sum(float(row["distance_km"] or 0) for row in rows),
+                    3,
+                ),
+                "sequence_gaps": gaps,
+            })
+        return {"month": month, "vehicles": result}
+
 
     def batch_summary(self, batch_id: str) -> dict:
         waybills = self.db.query(
