@@ -551,12 +551,6 @@ CREATE TABLE IF NOT EXISTS garage_waybills (
 CREATE INDEX IF NOT EXISTS idx_garage_waybills_month
 ON garage_waybills(trip_date, vehicle_id, employee_id);
 
-CREATE INDEX IF NOT EXISTS idx_garage_waybills_batch
-ON garage_waybills(batch_id, trip_date);
-
-CREATE INDEX IF NOT EXISTS idx_garage_waybills_review
-ON garage_waybills(needs_review, processing_status, trip_date);
-
 CREATE TABLE IF NOT EXISTS garage_fuel_statements (
     id TEXT PRIMARY KEY,
     document_id TEXT NOT NULL UNIQUE,
