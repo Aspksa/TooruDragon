@@ -283,6 +283,7 @@ class DocumentIntelligenceService:
 
         self._rebuild_issues(document_id)
         self._build_relations(document_id)
+        self._cross_document_checks(document_id)
 
         if previous_id:
             self._upsert_relation(
@@ -405,6 +406,7 @@ class DocumentIntelligenceService:
 
         self._rebuild_issues(document_id)
         self._build_relations(document_id)
+        self._cross_document_checks(document_id)
         self.rag.ingest(
             text,
             title=current["title"],
@@ -950,6 +952,18 @@ class DocumentIntelligenceService:
                 "Не удалось определить год для автоматической сортировки служебной записки.",
             )
 
+        filename_year = re.search(r"\b(19\d{2}|20\d{2})\b", doc.get("original_name") or "")
+        if filename_year and doc.get("year") and int(filename_year.group(1)) != int(doc["year"]):
+            issue(
+                "filename_year_conflict",
+                "warning",
+                "Год в имени файла отличается от года, найденного в документе.",
+                {
+                    "filename_year": int(filename_year.group(1)),
+                    "document_year": int(doc["year"]),
+                },
+            )
+
         with self.db.connect() as db:
             for kind, severity, message, details in issues:
                 db.execute(
@@ -1023,6 +1037,79 @@ class DocumentIntelligenceService:
                         0.97,
                         {"document_number": candidate["document_number"]},
                     )
+
+    def _cross_document_checks(self, document_id: str) -> None:
+        doc = self.document(document_id, include_text=False)
+        facts = doc.get("facts", [])
+        plates = {
+            item["normalized_value"]
+            for item in facts
+            if item["fact_type"] == "vehicle" and item["fact_key"] == "registration_number"
+        }
+        vins = {
+            item["normalized_value"]
+            for item in facts
+            if item["fact_type"] == "vehicle" and item["fact_key"] == "vin"
+        }
+
+        for plate in plates:
+            rows = self.db.query(
+                """
+                SELECT DISTINCT d.id, d.title
+                FROM work_document_facts f
+                JOIN work_documents d ON d.id=f.document_id
+                WHERE f.fact_type='vehicle'
+                  AND f.fact_key='registration_number'
+                  AND f.normalized_value=?
+                  AND f.document_id!=?
+                  AND d.archived=0
+                """,
+                (plate, document_id),
+            )
+            for row in rows:
+                other_vins = {
+                    item["normalized_value"]
+                    for item in self.facts(row["id"])
+                    if item["fact_type"] == "vehicle" and item["fact_key"] == "vin"
+                }
+                if vins and other_vins and vins.isdisjoint(other_vins):
+                    self._add_issue(
+                        document_id,
+                        "vehicle_identity_conflict",
+                        "error",
+                        "Один госномер связан с разными VIN в документах.",
+                        {
+                            "registration_number": plate,
+                            "current_vins": sorted(vins),
+                            "other_document_id": row["id"],
+                            "other_document_title": row["title"],
+                            "other_vins": sorted(other_vins),
+                        },
+                    )
+
+        for relation in self.relations(document_id):
+            if relation["relation_type"] != "references":
+                continue
+            target = self.document(relation["target_document_id"], include_text=False)
+            if (
+                doc.get("document_date")
+                and target.get("document_date")
+                and doc["document_date"] < target["document_date"]
+                and doc["document_type"] in {"invoice", "invoice_offer", "act"}
+                and target["document_type"] == "contract"
+            ):
+                self._add_issue(
+                    document_id,
+                    "reference_date_conflict",
+                    "warning",
+                    "Документ датирован раньше договора, на который он ссылается.",
+                    {
+                        "document_date": doc["document_date"],
+                        "contract_date": target["document_date"],
+                        "contract_document_id": target["id"],
+                        "contract_number": target.get("document_number"),
+                    },
+                )
 
     def _compare_versions(self, document_id: str, previous_id: str) -> None:
         current = self.document(document_id, include_text=False)
