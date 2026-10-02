@@ -52,6 +52,8 @@ CRITICAL_FIELDS = {
 }
 FIELD_THRESHOLD = 0.78
 LINK_THRESHOLD = 0.90
+MAX_BATCH_BYTES = 250_000_000
+MAX_UPLOAD_CHUNKS = 500
 MONTHS_RU = {
     1: "01 Январь",
     2: "02 Февраль",
@@ -155,6 +157,10 @@ class WaybillAutomationService:
             raise ValueError("chunk_index and total_chunks are required") from exc
         if index < 0 or total <= 0 or index >= total:
             raise ValueError("invalid chunk coordinates")
+        if total > MAX_UPLOAD_CHUNKS:
+            raise ValueError(
+                f"too many upload chunks; maximum is {MAX_UPLOAD_CHUNKS}"
+            )
 
         encoded = str(payload.get("content_base64") or "")
         try:
@@ -187,6 +193,16 @@ class WaybillAutomationService:
             temporary.write_bytes(raw)
             temporary.replace(part)
 
+        total_received_bytes = sum(
+            path.stat().st_size
+            for path in root.glob("*.part")
+        )
+        if total_received_bytes > MAX_BATCH_BYTES:
+            part.unlink(missing_ok=True)
+            raise ValueError(
+                f"waybill batch is larger than {MAX_BATCH_BYTES} bytes"
+            )
+
         received = len(list(root.glob("*.part")))
         if received < total:
             return {
@@ -208,6 +224,12 @@ class WaybillAutomationService:
                 output.write(data)
                 digest.update(data)
                 size += len(data)
+
+        if size > MAX_BATCH_BYTES:
+            assembled.unlink(missing_ok=True)
+            raise ValueError(
+                f"waybill batch is larger than {MAX_BATCH_BYTES} bytes"
+            )
 
         result = self._register_batch_file(
             filename=filename,
@@ -236,6 +258,10 @@ class WaybillAutomationService:
             raise ValueError("filename is required")
         if not raw:
             raise ValueError("file is empty")
+        if len(raw) > MAX_BATCH_BYTES:
+            raise ValueError(
+                f"waybill batch is larger than {MAX_BATCH_BYTES} bytes"
+            )
         suffix = Path(filename).suffix.lower()
         if suffix not in {".pdf", ".jpg", ".jpeg", ".png", ".tif", ".tiff"}:
             raise ValueError("waybill batch supports PDF/JPG/PNG/TIFF")
