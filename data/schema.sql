@@ -257,3 +257,43 @@ CREATE TABLE IF NOT EXISTS reasoning_mode_stats (
     feedback_sum REAL NOT NULL DEFAULT 0.0,
     updated_at TEXT NOT NULL
 );
+
+
+CREATE TABLE IF NOT EXISTS work_employees (
+    id TEXT PRIMARY KEY,
+    personnel_number TEXT NOT NULL UNIQUE,
+    full_name TEXT NOT NULL,
+    department TEXT NOT NULL DEFAULT '',
+    position TEXT NOT NULL DEFAULT '',
+    schedule_type TEXT NOT NULL DEFAULT '5/2',
+    weekly_hours REAL NOT NULL DEFAULT 40,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_work_employees_department_name
+ON work_employees(department, full_name);
+
+CREATE TABLE IF NOT EXISTS work_timesheet_entries (
+    id TEXT PRIMARY KEY,
+    employee_id TEXT NOT NULL,
+    work_date TEXT NOT NULL,
+    status TEXT NOT NULL,
+    planned_hours REAL NOT NULL DEFAULT 0,
+    actual_hours REAL NOT NULL DEFAULT 0,
+    overtime_hours REAL NOT NULL DEFAULT 0,
+    night_hours REAL NOT NULL DEFAULT 0,
+    note TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL DEFAULT 'manual',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(employee_id) REFERENCES work_employees(id) ON DELETE CASCADE,
+    UNIQUE(employee_id, work_date)
+);
+
+CREATE INDEX IF NOT EXISTS idx_work_timesheet_month
+ON work_timesheet_entries(work_date, employee_id);
+
+CREATE INDEX IF NOT EXISTS idx_work_timesheet_employee
+ON work_timesheet_entries(employee_id, work_date);
