@@ -636,7 +636,7 @@ class WaybillAutomationService:
             }
             recovered_missing = [
                 key
-                for key in ("trip_date", "vehicle_plate", "driver_name")
+                for key in sorted(CRITICAL_FIELDS)
                 if not self._value(recovered_fields, key)
             ]
             recovered_low = [
