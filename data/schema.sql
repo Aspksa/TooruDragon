@@ -325,3 +325,99 @@ CREATE TABLE IF NOT EXISTS work_timesheet_custom_values (
 
 CREATE INDEX IF NOT EXISTS idx_work_timesheet_custom_values_column
 ON work_timesheet_custom_values(column_id, entry_id);
+
+
+CREATE TABLE IF NOT EXISTS work_documents (
+    id TEXT PRIMARY KEY,
+    family_id TEXT NOT NULL,
+    version INTEGER NOT NULL DEFAULT 1,
+    previous_document_id TEXT,
+    title TEXT NOT NULL,
+    original_name TEXT NOT NULL DEFAULT '',
+    document_type TEXT NOT NULL,
+    status TEXT NOT NULL,
+    document_number TEXT NOT NULL DEFAULT '',
+    document_date TEXT,
+    year INTEGER,
+    archive_path TEXT NOT NULL,
+    source TEXT NOT NULL DEFAULT 'manual',
+    source_path TEXT NOT NULL DEFAULT '',
+    text_content TEXT NOT NULL,
+    content_sha256 TEXT NOT NULL,
+    normalized_sha256 TEXT NOT NULL,
+    structure_sha256 TEXT NOT NULL,
+    passport_json TEXT NOT NULL DEFAULT '{}',
+    dna_json TEXT NOT NULL DEFAULT '{}',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    archived INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(previous_document_id) REFERENCES work_documents(id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_work_documents_content_hash
+ON work_documents(content_sha256)
+WHERE archived=0;
+
+CREATE INDEX IF NOT EXISTS idx_work_documents_family_version
+ON work_documents(family_id, version DESC);
+
+CREATE INDEX IF NOT EXISTS idx_work_documents_type_date
+ON work_documents(document_type, document_date);
+
+CREATE INDEX IF NOT EXISTS idx_work_documents_status
+ON work_documents(status, archived, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS work_document_facts (
+    id TEXT PRIMARY KEY,
+    document_id TEXT NOT NULL,
+    fact_type TEXT NOT NULL,
+    fact_key TEXT NOT NULL,
+    value_text TEXT NOT NULL,
+    normalized_value TEXT NOT NULL,
+    confidence REAL NOT NULL DEFAULT 1.0,
+    provenance_json TEXT NOT NULL DEFAULT '{}',
+    verified INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(document_id) REFERENCES work_documents(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_work_document_facts_document
+ON work_document_facts(document_id, fact_type, fact_key);
+
+CREATE INDEX IF NOT EXISTS idx_work_document_facts_lookup
+ON work_document_facts(fact_type, normalized_value);
+
+CREATE TABLE IF NOT EXISTS work_document_issues (
+    id TEXT PRIMARY KEY,
+    document_id TEXT NOT NULL,
+    issue_type TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    message TEXT NOT NULL,
+    details_json TEXT NOT NULL DEFAULT '{}',
+    resolved INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(document_id) REFERENCES work_documents(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_work_document_issues_document
+ON work_document_issues(document_id, resolved, severity);
+
+CREATE TABLE IF NOT EXISTS work_document_relations (
+    id TEXT PRIMARY KEY,
+    source_document_id TEXT NOT NULL,
+    target_document_id TEXT NOT NULL,
+    relation_type TEXT NOT NULL,
+    score REAL NOT NULL DEFAULT 1.0,
+    evidence_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(source_document_id) REFERENCES work_documents(id) ON DELETE CASCADE,
+    FOREIGN KEY(target_document_id) REFERENCES work_documents(id) ON DELETE CASCADE,
+    UNIQUE(source_document_id, target_document_id, relation_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_work_document_relations_source
+ON work_document_relations(source_document_id, relation_type);
+
+CREATE INDEX IF NOT EXISTS idx_work_document_relations_target
+ON work_document_relations(target_document_id, relation_type);
