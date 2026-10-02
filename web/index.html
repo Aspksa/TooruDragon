@@ -364,7 +364,7 @@
             <div class="field"><label>Сотрудник / водитель</label><select id="garage-driver"></select></div>
             <div class="field"><label>Топливная карта</label><input id="garage-card-number" inputmode="numeric" placeholder="5019..."></div>
             <div class="field"><label>Автомобиль</label><select id="garage-driver-vehicle"></select></div>
-            <div class="field"><label>Действует с</label><input id="garage-assignment-date" type="date"></div>
+            <div class="field"><label>Действует с</label><input id="garage-assignment-date" type="date"><small>Оставьте пустым для первой привязки — она применится и к прошлым выпискам.</small></div>
           </div>
           <div class="actions" style="margin-top:12px">
             <button class="btn" id="garage-card-assign">Привязать карту</button>
@@ -414,7 +414,7 @@
 
       <div class="section two-col">
         <div class="card panel">
-          <div class="section-head"><h3>Неопознанные карты</h3><span class="status-pill" id="garage-unresolved-badge">0</span></div>
+          <div class="section-head"><h3>Требуют привязки</h3><span class="status-pill" id="garage-unresolved-badge">0</span></div>
           <div id="garage-unresolved-list" class="stack-list"></div>
         </div>
         <div class="card panel">
