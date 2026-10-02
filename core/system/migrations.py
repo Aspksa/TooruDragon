@@ -208,6 +208,24 @@ def _rebuild_waybills(db: sqlite3.Connection) -> None:
     )
 
 
+def _ensure_waybill_indexes(db: sqlite3.Connection) -> None:
+    columns = {item["name"] for item in _table_columns(db, "garage_waybills")}
+    if "batch_id" in columns:
+        db.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_garage_waybills_batch
+            ON garage_waybills(batch_id, trip_date)
+            """
+        )
+    if {"needs_review", "processing_status", "trip_date"}.issubset(columns):
+        db.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_garage_waybills_review
+            ON garage_waybills(needs_review, processing_status, trip_date)
+            """
+        )
+
+
 def apply_migrations(db: sqlite3.Connection) -> list[str]:
     """Apply narrow, idempotent SQLite migrations after schema bootstrap."""
     applied: list[str] = []
@@ -223,4 +241,5 @@ def apply_migrations(db: sqlite3.Connection) -> list[str]:
             applied.append("garage_waybills_v2")
         finally:
             db.execute("PRAGMA foreign_keys=ON")
+    _ensure_waybill_indexes(db)
     return applied
