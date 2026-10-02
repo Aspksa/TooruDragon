@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -23,7 +23,7 @@ class Database:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         schema = SCHEMA_PATH.read_text(encoding="utf-8")
-        with sqlite3.connect(self.path, timeout=10) as db:
+        with closing(sqlite3.connect(self.path, timeout=10)) as db:
             db.executescript(schema)
             db.execute(
                 "INSERT OR REPLACE INTO system_meta(key, value) VALUES(?, ?)",
