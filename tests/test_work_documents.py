@@ -97,6 +97,53 @@ class DocumentIntelligenceTests(unittest.TestCase):
         self.assertIn("invoice_offer_contains_services", issue_types)
         self.assertEqual(doc["status"], "error")
 
+    def test_service_memo_extracts_labeled_facts_and_request(self):
+        doc = self.service.ingest({
+            "title": "Служебная записка № 18",
+            "text": (
+                "СЛУЖЕБНАЯ ЗАПИСКА № 18 от 16.03.2021\n"
+                "Кому: Директору\n"
+                "От кого: Начальника отдела\n"
+                "Подразделение: Транспортный отдел\n"
+                "Тема: Ремонт автомобиля\n"
+                "Прошу выполнить ремонт автомобиля А123ВС25.\n"
+                "Количество: 2 шт. НДС 20%."
+            ),
+        })
+        by_key = {item["fact_key"]: item for item in doc["facts"]}
+        self.assertEqual(by_key["addressee"]["value_text"], "Директору")
+        self.assertEqual(by_key["author"]["value_text"], "Начальника отдела")
+        self.assertEqual(by_key["department"]["value_text"], "Транспортный отдел")
+        self.assertEqual(by_key["subject"]["value_text"], "Ремонт автомобиля")
+        self.assertIn("Прошу выполнить ремонт", by_key["requested_action"]["value_text"])
+        self.assertIn("vat", by_key)
+        self.assertIn("quantity", by_key)
+        self.assertEqual(doc["dna"]["version"], "1.1")
+        self.assertTrue(doc["dna"]["fact_fingerprint"])
+
+    def test_referenced_contract_counterparty_conflict_is_error(self):
+        contract = self.service.ingest({
+            "title": "Договор № 12",
+            "text": (
+                "ДОГОВОР № 12 от 01.01.2020\n"
+                "Контрагент: ООО Ромашка\n"
+                "Предмет договора."
+            ),
+        })
+        invoice = self.service.ingest({
+            "title": "Счёт № 55",
+            "text": (
+                "СЧЁТ № 55 от 10.01.2020\n"
+                "Поставщик: ООО Василёк\n"
+                "По договору № 12 от 01.01.2020.\n"
+                "Итого 1000 руб."
+            ),
+        })
+        self.assertNotEqual(contract["id"], invoice["id"])
+        issue_types = {item["issue_type"] for item in invoice["issues"]}
+        self.assertIn("counterparty_conflict", issue_types)
+        self.assertEqual(invoice["status"], "error")
+
     def test_filename_year_conflict_is_reported(self):
         doc = self.service.ingest({
             "title": "Приказ № 5",
