@@ -113,6 +113,7 @@ POST_ALLOWLIST = {
         "/documents/file-ingest",
         "/documents/reanalyze",
         "/documents/archive",
+        "/documents/migrate-legacy-rag",
     ),
     "supervisor": (
         "/core/action",
