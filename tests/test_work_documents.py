@@ -208,6 +208,10 @@ class DocumentIntelligenceTests(unittest.TestCase):
         self.assertEqual(doc["document_type"], "contract")
         self.assertEqual(doc["metadata"]["file"]["parser"], "builtin_docx_xml")
         self.assertEqual(doc["document_number"], "8")
+        self.assertTrue(doc["passport"]["original_preserved"])
+        stored = self.db.path.parent / doc["source_path"]
+        self.assertTrue(stored.is_file())
+        self.assertEqual(stored.read_bytes(), stream.getvalue())
 
     def test_xlsx_inline_string_ingest_uses_builtin_parser(self):
         stream = io.BytesIO()
