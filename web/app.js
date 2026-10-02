@@ -680,6 +680,7 @@ const documentTypeLabels = {
   order:"Приказ",
   timesheet:"Табель",
   vehicle_document:"Документ на технику",
+  fuel_statement:"Выписка ГСМ",
   other:"Прочее",
 };
 
@@ -876,7 +877,13 @@ async function ingestDocumentFile() {
     $("#doc-file-title").value = "";
     await loadDocuments();
     await openDocument(data.document.id);
-    toast(data.document.duplicate ? "Дубликат уже был изучен" : "Документ изучен");
+    if (data.fuel_import?.ok) {
+      toast("Выписка ГСМ изучена и передана в гараж");
+    } else if (data.fuel_import && !data.fuel_import.ok) {
+      toast("Выписка сохранена, но импорт ГСМ требует внимания", true);
+    } else {
+      toast(data.document.duplicate ? "Дубликат уже был изучен" : "Документ изучен");
+    }
   } catch (e) {
     toast("Документ: "+e.message, true);
   } finally {
