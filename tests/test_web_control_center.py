@@ -31,6 +31,13 @@ class WebControlCenterProxyTests(unittest.TestCase):
         self.assertTrue(_allowed("GET", "work", "/documents/graph"))
         self.assertTrue(_allowed("GET", "work", "/documents/stats"))
         self.assertTrue(_allowed("GET", "work", "/documents/ingest-history?limit=100"))
+        self.assertTrue(_allowed("GET", "work", "/garage/stats"))
+        self.assertTrue(_allowed("GET", "work", "/garage/employees"))
+        self.assertTrue(_allowed("GET", "work", "/garage/vehicles"))
+        self.assertTrue(_allowed("GET", "work", "/garage/waybills?month=2026-06"))
+        self.assertTrue(_allowed("GET", "work", "/garage/fuel/statements"))
+        self.assertTrue(_allowed("GET", "work", "/garage/fuel/summary?month=2026-06"))
+        self.assertTrue(_allowed("GET", "work", "/garage/fuel/unresolved?month=2026-06"))
         self.assertTrue(_allowed("GET", "main", "/api/task/transitions?task_id=abc"))
 
     def test_control_actions_are_explicitly_allowlisted(self):
@@ -49,6 +56,11 @@ class WebControlCenterProxyTests(unittest.TestCase):
         self.assertTrue(_allowed("POST", "work", "/documents/reanalyze"))
         self.assertTrue(_allowed("POST", "work", "/documents/archive"))
         self.assertTrue(_allowed("POST", "work", "/documents/migrate-legacy-rag"))
+        self.assertTrue(_allowed("POST", "work", "/garage/vehicle/save"))
+        self.assertTrue(_allowed("POST", "work", "/garage/fuel-card/assign"))
+        self.assertTrue(_allowed("POST", "work", "/garage/driver-vehicle/assign"))
+        self.assertTrue(_allowed("POST", "work", "/garage/waybill/save"))
+        self.assertTrue(_allowed("POST", "work", "/garage/fuel/reconcile"))
 
     def test_arbitrary_local_proxying_is_rejected(self):
         self.assertFalse(_allowed("GET", "main", "/system"))
@@ -58,6 +70,7 @@ class WebControlCenterProxyTests(unittest.TestCase):
         self.assertFalse(_allowed("POST", "tooru_ai", "/arbitrary"))
         self.assertFalse(_allowed("POST", "work", "/timesheet/summary"))
         self.assertFalse(_allowed("POST", "work", "/documents/get"))
+        self.assertFalse(_allowed("POST", "work", "/garage/fuel/summary"))
 
     def test_wrong_method_is_rejected(self):
         self.assertFalse(_allowed("POST", "main", "/api/cores"))
@@ -117,6 +130,17 @@ class WebControlCenterProxyTests(unittest.TestCase):
             script,
         )
 
+    def test_garage_workspace_and_legacy_xls_upload_are_present(self):
+        html = (Path(ROOT) / "index.html").read_text(encoding="utf-8")
+        script = (Path(ROOT) / "app.js").read_text(encoding="utf-8")
+        self.assertIn('data-page="garage"', html)
+        self.assertIn('id="garage-waybill-save"', html)
+        self.assertIn('id="garage-summary-body"', html)
+        self.assertIn('value="fuel_statement"', html)
+        self.assertIn(".xls", html)
+        self.assertIn("async function loadGarage()", script)
+        self.assertIn("/api/work/garage/fuel/summary", script)
+
     def test_machine_report_includes_document_intelligence(self):
         calls = []
 
@@ -130,6 +154,13 @@ class WebControlCenterProxyTests(unittest.TestCase):
         self.assertIn("work.documents_recent", report["snapshot"])
         self.assertIn("work.documents_graph", report["snapshot"])
         self.assertIn("work.documents_ingest_history", report["snapshot"])
+        self.assertIn("work.garage_status", report["snapshot"])
+        self.assertIn("work.garage_stats", report["snapshot"])
+        self.assertIn("work.garage_employees", report["snapshot"])
+        self.assertIn("work.garage_vehicles", report["snapshot"])
+        self.assertIn("work.garage_fuel_statements", report["snapshot"])
+        self.assertIn("work.garage_fuel_summary", report["snapshot"])
+        self.assertIn("work.garage_fuel_unresolved", report["snapshot"])
 
 
 if __name__ == "__main__":
