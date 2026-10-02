@@ -410,6 +410,38 @@ class WaybillAutomationTests(unittest.TestCase):
                 "content_base64": "eA==",
             })
 
+    def test_changed_copy_is_kept_and_marked_as_possible_new_version(self):
+        service, _ocr = self.service([
+            page(1, waybill_text(2042, date(2026, 9, 10)))
+        ])
+        first = service.upload_bytes(
+            filename="Путевые_листы_Сентябрь_2026.pdf",
+            raw=b"first-version",
+        )
+        second = service.upload_bytes(
+            filename="Путевые_листы_Сентябрь_2026.pdf",
+            raw=b"second-version-with-small-change",
+        )
+
+        self.assertNotEqual(first["id"], second["id"])
+        self.assertFalse(second["duplicate"])
+        hint = second["progress"].get("possible_version_of")
+        self.assertIsNotNone(hint)
+        self.assertEqual(hint["batch_id"], first["id"])
+
+        relations = self.db.query(
+            """
+            SELECT target_document_id, relation_type, score
+            FROM work_document_relations
+            WHERE source_document_id=?
+              AND relation_type='possible_version_of'
+            """,
+            (second["id"],),
+        )
+        self.assertEqual(len(relations), 1)
+        self.assertEqual(relations[0]["target_document_id"], first["id"])
+        self.assertGreaterEqual(float(relations[0]["score"]), 0.84)
+
     def test_duplicate_upload_uses_sha256_and_does_not_duplicate(self):
         pages = [page(1, waybill_text(205, date(2026, 9, 11)))]
         service, _ocr = self.service(pages)
