@@ -557,6 +557,7 @@ class DocumentIntelligenceService:
         if not query:
             return []
         like = f"%{query}%"
+        capped = max(1, min(int(limit), 200))
         rows = self.db.query(
             """
             SELECT DISTINCT d.id
@@ -571,9 +572,26 @@ class DocumentIntelligenceService:
             ORDER BY d.updated_at DESC
             LIMIT ?
             """,
-            (like, like, like, like, like, max(1, min(int(limit), 200))),
+            (like, like, like, like, like, capped),
         )
-        return [self.document(row["id"], include_text=False) for row in rows]
+        ids = [row["id"] for row in rows]
+        seen = set(ids)
+        if len(ids) < capped:
+            for chunk in self.rag.search(query, limit=min(capped * 2, 100)):
+                document_id = chunk["document_id"]
+                if document_id in seen:
+                    continue
+                active = self.db.query(
+                    "SELECT id FROM work_documents WHERE id=? AND archived=0",
+                    (document_id,),
+                )
+                if not active:
+                    continue
+                ids.append(document_id)
+                seen.add(document_id)
+                if len(ids) >= capped:
+                    break
+        return [self.document(document_id, include_text=False) for document_id in ids]
 
     def archive(self, document_id: str) -> dict:
         self.document(document_id, include_text=False)
