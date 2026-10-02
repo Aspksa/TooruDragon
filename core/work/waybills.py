@@ -1077,6 +1077,20 @@ class WaybillAutomationService:
         normalized_plate = normalize_plate(plate)
         normalized_vin = re.sub(r"\s+", "", str(vin or "").upper())
 
+        # Project rule: a recognized registration number is the primary
+        # identity key. Never silently replace an unknown/different plate
+        # with a vehicle found only by VIN, because that can attach a waybill
+        # to the wrong car. VIN is a fallback only when no plate was read.
+        if normalized_plate:
+            matches = [
+                item for item in vehicles
+                if normalize_plate(item.get("registration_number") or "")
+                == normalized_plate
+            ]
+            if len(matches) == 1:
+                return matches[0]["id"], 0.99
+            return None, 0.0
+
         if normalized_vin:
             matches = [
                 item for item in vehicles
@@ -1086,14 +1100,6 @@ class WaybillAutomationService:
             if len(matches) == 1:
                 return matches[0]["id"], 1.0
 
-        if normalized_plate:
-            matches = [
-                item for item in vehicles
-                if normalize_plate(item.get("registration_number") or "")
-                == normalized_plate
-            ]
-            if len(matches) == 1:
-                return matches[0]["id"], 0.99
         return None, 0.0
 
     def _resolve_employee(
