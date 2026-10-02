@@ -346,3 +346,6 @@ canvas{width:100%;display:block}
   .document-list-panel,.document-detail-panel{min-height:auto}
   .documents-list{max-height:420px}
 }
+
+.document-failure-list{display:grid;gap:8px;max-height:260px;overflow:auto}
+.document-failure-list .document-issue small{display:block;color:var(--muted);margin-top:6px;font-size:9px}
