@@ -47,6 +47,8 @@ CRITICAL_FIELDS = {
     "odometer_end",
     "fuel_open_l",
     "fuel_close_l",
+    "departure_time",
+    "return_time",
 }
 FIELD_THRESHOLD = 0.78
 LINK_THRESHOLD = 0.90
@@ -715,7 +717,7 @@ class WaybillAutomationService:
 
         missing_critical = [
             key
-            for key in ("trip_date", "vehicle_plate", "driver_name")
+            for key in sorted(CRITICAL_FIELDS)
             if not self._value(fields, key)
         ]
         low_critical = [
@@ -1295,17 +1297,38 @@ class WaybillAutomationService:
             )
 
         if waybill.get("departure_time") and waybill.get("return_time"):
+            departure_clock = _parse_clock(waybill["departure_time"])
+            return_clock = _parse_clock(waybill["return_time"])
             duration = self._actual_interval_minutes(
                 waybill["trip_date"],
                 waybill["departure_time"],
                 waybill["return_time"],
             )
-            if duration is not None and duration > 24 * 60:
+            if (
+                departure_clock
+                and return_clock
+                and return_clock < departure_clock
+                and not (
+                    departure_clock[0] >= 18
+                    and return_clock[0] <= 8
+                )
+            ):
+                self._anomaly(
+                    waybill_id,
+                    "return_before_departure_ambiguous",
+                    "warning",
+                    "Время возвращения раньше времени выезда; ночной переход не подтверждён структурой времени.",
+                    {
+                        "departure_time": waybill["departure_time"],
+                        "return_time": waybill["return_time"],
+                    },
+                )
+            if duration is not None and duration > 20 * 60:
                 self._anomaly(
                     waybill_id,
                     "impossible_duration",
                     "error",
-                    "Продолжительность путевого листа превышает 24 часа.",
+                    "Продолжительность путевого листа подозрительно превышает 20 часов.",
                     {"minutes": duration},
                 )
 
@@ -2252,16 +2275,21 @@ class WaybillAutomationService:
     ) -> dict:
         waybill = self.waybill(waybill_id)
         missing = []
-        if not waybill.get("trip_date"):
-            missing.append("дата")
         if not waybill.get("vehicle_id"):
             missing.append("автомобиль")
         if not waybill.get("employee_id"):
             missing.append("водитель")
+        field_values = {
+            item["field_key"]: item.get("value")
+            for item in waybill.get("fields", [])
+        }
+        for key in sorted(CRITICAL_FIELDS):
+            if not field_values.get(key):
+                missing.append(key)
         if missing:
             raise ValueError(
                 "Нельзя подтвердить путевой лист: требуется определить "
-                + ", ".join(missing)
+                + ", ".join(dict.fromkeys(missing))
             )
 
         self.db.execute(
