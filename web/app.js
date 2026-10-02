@@ -19,6 +19,7 @@ const state = {
     selectedId: null,
     selected: null,
     stats: null,
+    legacyMigrationAttempted: false,
   },
   timesheet: {
     employees: [],
@@ -783,6 +784,23 @@ async function loadDocuments() {
     }
     const [statsData, listData] = await Promise.all([statsPromise, listPromise]);
     state.documents.stats = statsData.stats || {};
+    if (
+      Number(state.documents.stats.legacy_rag_documents || 0) > 0 &&
+      !state.documents.legacyMigrationAttempted
+    ) {
+      state.documents.legacyMigrationAttempted = true;
+      const migration = await api("/api/work/documents/migrate-legacy-rag", {
+        method:"POST",
+        body:"{}",
+      });
+      const result = migration.migration || {};
+      toast(
+        "Старый RAG объединён: " +
+        Number(result.migrated || 0) + " перенесено, " +
+        Number(result.duplicates || 0) + " дублей"
+      );
+      return loadDocuments();
+    }
     renderDocumentStats(state.documents.stats);
     renderDocumentsList(listData.documents || []);
     if (state.documents.selectedId) {
