@@ -143,6 +143,25 @@ class WebControlCenterProxyTests(unittest.TestCase):
             script,
         )
 
+    def test_light_workspace_redesign_is_present(self):
+        html = (Path(ROOT) / "index.html").read_text(encoding="utf-8")
+        css = (Path(ROOT) / "styles.css").read_text(encoding="utf-8")
+        script = (Path(ROOT) / "app.js").read_text(encoding="utf-8")
+
+        self.assertIn('name="color-scheme" content="light"', html)
+        self.assertIn("Дракончик Тоору · TooruDragon", html)
+        self.assertIn('<div class="nav-label">Главное</div>', html)
+        self.assertIn('<div class="nav-label">Работа</div>', html)
+        self.assertIn('data-page="agent"', html)
+        self.assertIn('id="tooru-dock"', html)
+        self.assertIn('data-open-page="documents"', html)
+        self.assertIn("styles.css?v=ui-light-20261002", html)
+        self.assertIn("app.js?v=ui-light-20261002", html)
+        self.assertIn("TooruDragon Light Workspace", css)
+        self.assertIn("--bg:#f4f7fb", css)
+        self.assertIn('openPage.dataset.openPage', script)
+        self.assertIn('agent:["Тоору"', script)
+
     def test_garage_workspace_and_legacy_xls_upload_are_present(self):
         html = (Path(ROOT) / "index.html").read_text(encoding="utf-8")
         script = (Path(ROOT) / "app.js").read_text(encoding="utf-8")
