@@ -203,3 +203,26 @@ canvas{width:100%;display:block}
 .compact-input{border:1px solid var(--line);background:var(--panel3);color:var(--text);border-radius:10px;padding:9px 11px}
 .memory-results{margin-top:10px;max-height:180px}
 @media(max-width:760px){.chat-compose,.memory-row{grid-template-columns:1fr}.chat-message{max-width:96%}}
+
+
+/* Work timesheet */
+.timesheet-matrix-wrap{overflow:auto;max-width:100%;border:1px solid var(--line);border-radius:12px}
+.timesheet-matrix{border-collapse:separate;border-spacing:0;min-width:max-content;width:100%;font-size:11px}
+.timesheet-matrix th,.timesheet-matrix td{border-right:1px solid var(--line);border-bottom:1px solid var(--line);min-width:38px;height:44px;text-align:center;padding:4px}
+.timesheet-matrix thead th{position:sticky;top:0;z-index:3;background:#151b30;color:var(--muted)}
+.timesheet-matrix .ts-person{position:sticky;left:0;z-index:2;min-width:190px;max-width:190px;text-align:left;background:#151b30;padding:7px 9px}
+.timesheet-matrix thead .ts-person{z-index:4}
+.timesheet-matrix .ts-person small{display:block;color:var(--muted);font-weight:500;margin-top:3px}
+.timesheet-matrix .ts-weekend{background:rgba(255,255,255,.025)}
+.timesheet-matrix .ts-cell{cursor:pointer;transition:.15s ease;position:relative}
+.timesheet-matrix .ts-cell:hover{background:rgba(169,108,255,.13);box-shadow:inset 0 0 0 1px rgba(169,108,255,.35)}
+.timesheet-matrix .ts-filled span{font-weight:800;color:var(--text)}
+.timesheet-matrix .ts-filled small{display:block;color:var(--muted);font-size:9px;margin-top:2px}
+.timesheet-matrix .ts-missing{background:rgba(255,113,143,.08)}
+.timesheet-matrix .ts-missing span{color:#ff718f;font-size:18px;line-height:1}
+.ts-positive{color:#65e6a5;font-weight:700}
+.ts-negative{color:#ff718f;font-weight:700}
+.ts-anomaly{border:1px solid var(--line);border-left:3px solid #7080a8;border-radius:10px;padding:10px 12px;margin-bottom:8px;background:rgba(255,255,255,.025)}
+.ts-anomaly.warning{border-left-color:#f2c66d}
+.ts-anomaly.error{border-left-color:#ff718f}
+.ts-anomaly.info{border-left-color:#6bb7ff}

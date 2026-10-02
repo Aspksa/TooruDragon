@@ -21,6 +21,7 @@
       <button data-page="workflow">◇ <span>Workflow</span></button>
       <button data-page="events">⌁ <span>События</span></button>
       <button data-page="agent">✦ <span>Agent Console</span></button>
+      <button data-page="timesheet">▦ <span>Табель</span></button>
       <button data-page="control">⚙ <span>Control Plane</span></button>
       <button data-page="audit">☷ <span>Audit</span></button>
     </nav>
@@ -195,6 +196,93 @@
             <div class="section-head"><h3>Console transcript</h3><button class="btn" id="agent-console-clear">Очистить</button></div>
             <div class="console" id="agent-console"></div>
           </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="page" data-page="timesheet">
+      <div class="section-head">
+        <div>
+          <h3>Табель рабочего времени</h3>
+          <div class="subtitle">Норма, факт, переработка, ночные часы, статусы отсутствий и автоматические проверки.</div>
+        </div>
+        <div class="actions">
+          <input id="timesheet-month" type="month" class="compact-input">
+          <button class="btn" id="timesheet-refresh">↻ Обновить</button>
+        </div>
+      </div>
+
+      <div class="grid audit-metrics">
+        <div class="card metric"><div class="metric-label">Сотрудники</div><div class="metric-value" id="ts-metric-employees">0</div><div class="metric-note">активные</div></div>
+        <div class="card metric"><div class="metric-label">Норма</div><div class="metric-value" id="ts-metric-planned">0</div><div class="metric-note">часов</div></div>
+        <div class="card metric"><div class="metric-label">Факт</div><div class="metric-value" id="ts-metric-actual">0</div><div class="metric-note">часов</div></div>
+        <div class="card metric"><div class="metric-label">Переработка</div><div class="metric-value" id="ts-metric-overtime">0</div><div class="metric-note">часов</div></div>
+        <div class="card metric"><div class="metric-label">Нет записей</div><div class="metric-value" id="ts-metric-missing">0</div><div class="metric-note">плановых дней</div></div>
+        <div class="card metric"><div class="metric-label">Проверить</div><div class="metric-value" id="ts-metric-anomalies">0</div><div class="metric-note">аномалий</div></div>
+      </div>
+
+      <div class="section card panel">
+        <div class="section-head">
+          <h3>Месячная матрица</h3>
+          <span class="status-pill online">Я · ОТ · Б · В · К · НН · УД · ПК</span>
+        </div>
+        <div class="timesheet-matrix-wrap">
+          <table class="timesheet-matrix" id="timesheet-matrix"></table>
+        </div>
+      </div>
+
+      <div class="section two-col">
+        <div class="card panel">
+          <div class="section-head"><h3>Сотрудник</h3></div>
+          <div class="form-grid">
+            <div class="field"><label>Табельный №</label><input id="ts-employee-number" placeholder="0001"></div>
+            <div class="field"><label>ФИО</label><input id="ts-employee-name" placeholder="Иванов Иван Иванович"></div>
+            <div class="field"><label>Подразделение</label><input id="ts-employee-department" placeholder="Отдел"></div>
+            <div class="field"><label>Должность</label><input id="ts-employee-position" placeholder="Должность"></div>
+            <div class="field"><label>График</label><input id="ts-employee-schedule" value="5/2"></div>
+            <div class="field"><label>Часов в неделю</label><input id="ts-employee-weekly" type="number" min="0" max="168" step="0.5" value="40"></div>
+          </div>
+          <button class="btn primary" id="ts-employee-save" style="margin-top:12px;width:100%">Добавить сотрудника</button>
+        </div>
+
+        <div class="card panel">
+          <div class="section-head"><h3>День табеля</h3></div>
+          <div class="form-grid">
+            <div class="field"><label>Сотрудник</label><select id="ts-entry-employee"></select></div>
+            <div class="field"><label>Дата</label><input id="ts-entry-date" type="date"></div>
+            <div class="field"><label>Статус</label>
+              <select id="ts-entry-status">
+                <option value="work">Я · Работа</option>
+                <option value="remote">УД · Удалённо</option>
+                <option value="vacation">ОТ · Отпуск</option>
+                <option value="sick">Б · Больничный</option>
+                <option value="day_off">В · Выходной</option>
+                <option value="business_trip">К · Командировка</option>
+                <option value="absence">НН · Неявка</option>
+                <option value="training">ПК · Обучение</option>
+              </select>
+            </div>
+            <div class="field"><label>План, ч</label><input id="ts-entry-planned" type="number" min="0" max="24" step="0.25" value="8"></div>
+            <div class="field"><label>Факт, ч</label><input id="ts-entry-actual" type="number" min="0" max="24" step="0.25" value="8"></div>
+            <div class="field"><label>Сверхурочно, ч</label><input id="ts-entry-overtime" type="number" min="0" max="24" step="0.25" value="0"></div>
+            <div class="field"><label>Ночные, ч</label><input id="ts-entry-night" type="number" min="0" max="24" step="0.25" value="0"></div>
+            <div class="field"><label>Примечание</label><input id="ts-entry-note" placeholder="необязательно"></div>
+          </div>
+          <button class="btn primary" id="ts-entry-save" style="margin-top:12px;width:100%">Сохранить день</button>
+        </div>
+      </div>
+
+      <div class="section two-col">
+        <div class="card panel">
+          <div class="section-head"><h3>Итоги по сотрудникам</h3></div>
+          <div class="table-wrap"><table>
+            <thead><tr><th>Сотрудник</th><th>Норма</th><th>Факт</th><th>Баланс</th><th>Сверх.</th><th>Ночь</th><th>Пропуски</th></tr></thead>
+            <tbody id="timesheet-summary-body"></tbody>
+          </table></div>
+        </div>
+        <div class="card panel">
+          <div class="section-head"><h3>Тоору заметила</h3><span class="status-pill" id="timesheet-anomaly-badge">0</span></div>
+          <div id="timesheet-anomalies" class="stack-list"></div>
         </div>
       </div>
     </section>

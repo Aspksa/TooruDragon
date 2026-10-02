@@ -21,6 +21,8 @@ class WebControlCenterProxyTests(unittest.TestCase):
         self.assertTrue(_allowed("GET", "tooru_ai", "/memory/search?q=gateway"))
         self.assertTrue(_allowed("GET", "tooru_ai", "/rag/search?q=gateway"))
         self.assertTrue(_allowed("GET", "tooru_ai", "/rag/documents"))
+        self.assertTrue(_allowed("GET", "work", "/timesheet/summary?month=2026-10"))
+        self.assertTrue(_allowed("GET", "work", "/timesheet/calendar?month=2026-10"))
         self.assertTrue(_allowed("GET", "main", "/api/task/transitions?task_id=abc"))
 
     def test_control_actions_are_explicitly_allowlisted(self):
@@ -31,6 +33,8 @@ class WebControlCenterProxyTests(unittest.TestCase):
         self.assertTrue(_allowed("POST", "tooru_ai", "/inference"))
         self.assertTrue(_allowed("POST", "tooru_ai", "/memory/remember"))
         self.assertTrue(_allowed("POST", "tooru_ai", "/rag/ingest"))
+        self.assertTrue(_allowed("POST", "work", "/timesheet/employee/save"))
+        self.assertTrue(_allowed("POST", "work", "/timesheet/entry/save"))
 
     def test_arbitrary_local_proxying_is_rejected(self):
         self.assertFalse(_allowed("GET", "main", "/system"))
@@ -38,6 +42,7 @@ class WebControlCenterProxyTests(unittest.TestCase):
         self.assertFalse(_allowed("GET", "gateway", "/core/home/health"))
         self.assertFalse(_allowed("POST", "supervisor", "/unknown"))
         self.assertFalse(_allowed("POST", "tooru_ai", "/arbitrary"))
+        self.assertFalse(_allowed("POST", "work", "/timesheet/summary"))
 
     def test_wrong_method_is_rejected(self):
         self.assertFalse(_allowed("POST", "main", "/api/cores"))

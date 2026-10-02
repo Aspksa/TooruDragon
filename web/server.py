@@ -25,6 +25,7 @@ UPSTREAMS = {
     "supervisor": "http://127.0.0.1:8699",
     "gateway": "http://127.0.0.1:8698",
     "tooru_ai": "http://127.0.0.1:8698/core/tooru_ai",
+    "work": "http://127.0.0.1:8698/core/work",
 }
 
 GET_ALLOWLIST = {
@@ -57,6 +58,15 @@ GET_ALLOWLIST = {
         "/rag/search",
         "/rag/documents",
     ),
+    "work": (
+        "/health",
+        "/timesheet/status",
+        "/timesheet/employees",
+        "/timesheet/entries",
+        "/timesheet/calendar",
+        "/timesheet/summary",
+        "/timesheet/anomalies",
+    ),
     "supervisor": (
         "/health",
         "/status",
@@ -85,6 +95,10 @@ POST_ALLOWLIST = {
         "/inference",
         "/memory/remember",
         "/rag/ingest",
+    ),
+    "work": (
+        "/timesheet/employee/save",
+        "/timesheet/entry/save",
     ),
     "supervisor": (
         "/core/action",
@@ -187,6 +201,12 @@ def _build_machine_report(fetcher=None) -> dict:
         "ai.reasoning": ("tooru_ai", "/reasoning/stats"),
         "ai.conversations": ("tooru_ai", "/conversations?limit=100"),
         "ai.rag_documents": ("tooru_ai", "/rag/documents?limit=200"),
+        "work.health": ("work", "/health"),
+        "work.timesheet_status": ("work", "/timesheet/status"),
+        "work.timesheet_summary": (
+            "work",
+            f"/timesheet/summary?month={datetime.now(timezone.utc).strftime('%Y-%m')}",
+        ),
         "supervisor.health": ("supervisor", "/health"),
         "supervisor.status": ("supervisor", "/status"),
         "supervisor.deployments": ("supervisor", "/deployments"),
