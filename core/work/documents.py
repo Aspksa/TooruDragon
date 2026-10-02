@@ -14,6 +14,7 @@ from uuid import uuid4
 
 from core.system.database import Database
 from core.system.rag import RAGIndex
+from core.work.legacy_xls import LegacyXlsError, LegacyXlsWorkbook
 
 
 DATE_RE = re.compile(r"\b(\d{1,2}[./-]\d{1,2}[./-]\d{4}|\d{4}-\d{2}-\d{2})\b")
@@ -55,6 +56,15 @@ VAT_RE = re.compile(
     r"\bНДС\b\s*(?:(\d{1,2}(?:[.,]\d+)?)\s*%)?",
     re.IGNORECASE,
 )
+FUEL_STATEMENT_PERIOD_RE = re.compile(
+    r"Период\s+с\s+(\d{1,2}[.]\d{1,2}[.]\d{4})"
+    r"\s+по\s+(\d{1,2}[.]\d{1,2}[.]\d{4})",
+    re.IGNORECASE,
+)
+FUEL_CARD_RE = re.compile(
+    r"Карта\s*№?\s*(\d{10,})",
+    re.IGNORECASE,
+)
 LABEL_PATTERNS = {
     "organization": re.compile(r"(?im)^\s*(?:организация|общество|компания)\s*[:\-]\s*(.+?)\s*$"),
     "department": re.compile(r"(?im)^\s*(?:подразделение|отдел|служба)\s*[:\-]\s*(.+?)\s*$"),
@@ -75,6 +85,7 @@ DOCUMENT_TYPES = {
     "order": "Приказ",
     "timesheet": "Табель",
     "vehicle_document": "Документ на технику",
+    "fuel_statement": "Выписка ГСМ",
     "other": "Прочее",
 }
 
@@ -87,6 +98,7 @@ TYPE_ARCHIVES = {
     "order": "Приказы",
     "timesheet": "Табель",
     "vehicle_document": "Документы техники",
+    "fuel_statement": "Выписки ГСМ",
     "other": "Документы",
 }
 
@@ -238,7 +250,7 @@ class DocumentIntelligenceService:
         )
         facts = self._extract_facts(text)
         document_number = self._first_fact(facts, "document_number")
-        document_date = self._first_fact(facts, "date")
+        document_date = self._document_date(document_type, facts)
         year = int(document_date[:4]) if document_date else self._infer_year(facts, text)
 
         family_id, previous_id, version = self._resolve_family(
@@ -248,7 +260,11 @@ class DocumentIntelligenceService:
             explicit_family_id=str(payload.get("family_id") or "").strip(),
         )
 
-        archive_path = self._archive_path(document_type, year)
+        archive_path = self._archive_path(
+            document_type,
+            year,
+            document_date=document_date,
+        )
         normalized_hash = _sha256(re.sub(r"\s+", "", text).lower())
         structure = self._structure_signature(document_type, text, facts)
         structure_hash = _sha256(json.dumps(structure, ensure_ascii=False, sort_keys=True))
@@ -383,9 +399,13 @@ class DocumentIntelligenceService:
         document_type = self._classify(current["title"], text)
         facts = self._extract_facts(text)
         document_number = self._first_fact(facts, "document_number")
-        document_date = self._first_fact(facts, "date")
+        document_date = self._document_date(document_type, facts)
         year = int(document_date[:4]) if document_date else self._infer_year(facts, text)
-        archive_path = self._archive_path(document_type, year)
+        archive_path = self._archive_path(
+            document_type,
+            year,
+            document_date=document_date,
+        )
         structure = self._structure_signature(document_type, text, facts)
         structure_hash = _sha256(json.dumps(structure, ensure_ascii=False, sort_keys=True))
         passport = self._passport(
@@ -997,6 +1017,16 @@ class DocumentIntelligenceService:
                 raise ValueError("DOCX contains no extractable text")
             return text, "builtin_docx_xml"
 
+        if suffix == ".xls":
+            try:
+                workbook = LegacyXlsWorkbook(raw)
+                text = workbook.text().strip()
+            except LegacyXlsError as exc:
+                raise ValueError(f"legacy XLS parsing failed: {exc}") from exc
+            if not text:
+                raise ValueError("XLS contains no extractable cells")
+            return text, "builtin_ole_biff5"
+
         if suffix == ".xlsx":
             try:
                 with zipfile.ZipFile(io.BytesIO(raw)) as archive:
@@ -1088,6 +1118,19 @@ class DocumentIntelligenceService:
             return any(term in value for term in terms)
 
         # Prefer title and document heading over references later in the body.
+        fuel_statement_signals = (
+            "выписка по пластиковым картам" in title_l
+            or "выписка по пластиковым картам" in head
+            or "по картам айт" in head
+            or (
+                "карта" in head
+                and "топливо" in head
+                and "кол-во" in head
+                and "сумма" in head
+            )
+        )
+        if fuel_statement_signals:
+            return "fuel_statement"
         if has(title_l, "служебная записка") or (
             "служебн" in early and "записк" in early
         ):
@@ -1153,6 +1196,39 @@ class DocumentIntelligenceService:
                     "excerpt": text[max(0, start - 40):min(len(text), end + 80)],
                 },
             })
+
+        period_match = FUEL_STATEMENT_PERIOD_RE.search(text)
+        if period_match:
+            period_start = _parse_date(period_match.group(1))
+            period_end = _parse_date(period_match.group(2))
+            if period_start:
+                add(
+                    "period",
+                    "period_start",
+                    period_start,
+                    period_match.start(1),
+                    period_match.end(1),
+                    0.99,
+                )
+            if period_end:
+                add(
+                    "period",
+                    "period_end",
+                    period_end,
+                    period_match.start(2),
+                    period_match.end(2),
+                    0.99,
+                )
+
+        for match in FUEL_CARD_RE.finditer(text):
+            add(
+                "fuel",
+                "fuel_card_number",
+                match.group(1),
+                match.start(1),
+                match.end(1),
+                0.99,
+            )
 
         for match in DATE_RE.finditer(text):
             parsed = _parse_date(match.group(1))
@@ -1709,6 +1785,17 @@ class DocumentIntelligenceService:
         )
 
     @staticmethod
+    def _document_date(document_type: str, facts: list[dict]) -> str | None:
+        if document_type == "fuel_statement":
+            for fact in facts:
+                if (
+                    fact["type"] == "period"
+                    and fact["key"] == "period_start"
+                ):
+                    return fact["value"]
+        return DocumentIntelligenceService._first_fact(facts, "date")
+
+    @staticmethod
     def _first_fact(facts: list[dict], fact_type: str) -> str | None:
         for fact in facts:
             if fact["type"] == fact_type:
@@ -1727,8 +1814,19 @@ class DocumentIntelligenceService:
         return int(match.group(1)) if match else None
 
     @staticmethod
-    def _archive_path(document_type: str, year: int | None) -> str:
+    def _archive_path(
+        document_type: str,
+        year: int | None,
+        *,
+        document_date: str | None = None,
+    ) -> str:
         root = TYPE_ARCHIVES.get(document_type, TYPE_ARCHIVES["other"])
+        if document_type == "fuel_statement" and document_date:
+            try:
+                month = int(document_date[5:7])
+                return f"{root}/{document_date[:4]}/{month:02d}"
+            except (ValueError, IndexError):
+                pass
         return f"{root}/{year if year else 'Без года'}"
 
     @staticmethod
