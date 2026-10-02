@@ -1,8 +1,15 @@
 from __future__ import annotations
 
 import unittest
+from datetime import datetime, timezone
+from pathlib import Path
 
-from web.server import _allowed
+from web.server import (
+    ROOT,
+    _allowed,
+    _build_machine_report,
+    _report_filename,
+)
 
 
 class WebControlCenterProxyTests(unittest.TestCase):
@@ -35,6 +42,47 @@ class WebControlCenterProxyTests(unittest.TestCase):
     def test_wrong_method_is_rejected(self):
         self.assertFalse(_allowed("POST", "main", "/api/cores"))
         self.assertFalse(_allowed("GET", "supervisor", "/core/action"))
+
+    def test_machine_report_collects_available_sources_and_errors(self):
+        def fake_fetcher(upstream, path, timeout=5.0):
+            if upstream == "gateway" and path == "/routes":
+                raise TimeoutError("gateway test timeout")
+            return {
+                "upstream": upstream,
+                "path": path,
+                "timeout": timeout,
+                "status": "ok",
+            }
+
+        report = _build_machine_report(fetcher=fake_fetcher)
+
+        self.assertEqual(report["schema"], "toorudragon.machine_report")
+        self.assertEqual(report["schema_version"], "1.0")
+        self.assertGreater(report["collection"]["requested"], 10)
+        self.assertEqual(report["collection"]["failed"], 1)
+        self.assertTrue(report["notes"]["partial_report"])
+        self.assertIn("system.main.health", report["snapshot"])
+        self.assertIn("ai.reasoning", report["snapshot"])
+        self.assertEqual(
+            report["collection"]["errors"][0]["source"],
+            "gateway.routes",
+        )
+
+    def test_machine_report_filename_is_stable_and_ascii(self):
+        value = _report_filename(
+            datetime(2026, 10, 2, 1, 2, 3, tzinfo=timezone.utc)
+        )
+        self.assertEqual(
+            value,
+            "toorudragon-machine-report-20261002-010203.json",
+        )
+        value.encode("ascii")
+
+    def test_audit_page_has_direct_report_download_link(self):
+        html = (Path(ROOT) / "index.html").read_text(encoding="utf-8")
+        self.assertIn('href="/report/system.json"', html)
+        self.assertIn('id="download-machine-report"', html)
+        self.assertIn("download", html)
 
 
 if __name__ == "__main__":

@@ -212,6 +212,16 @@
     </section>
 
     <section class="page" data-page="audit">
+      <div class="section-head">
+        <div>
+          <h3>Машиночитаемый отчёт проекта</h3>
+          <div class="subtitle">Полный диагностический снимок: ядра, AI, reasoning, память, workflow, события, Supervisor, Gateway и ошибки сбора.</div>
+        </div>
+        <a class="btn primary" id="download-machine-report" href="/report/system.json" download>⬇ Скачать JSON-отчёт</a>
+      </div>
+      <div class="card panel" style="margin-bottom:18px">
+        <div class="subtitle">Файл формируется в момент нажатия. Даже если отдельный модуль недоступен, скачивается частичный отчёт с перечнем ошибок сбора вместо полного отказа.</div>
+      </div>
       <div class="grid audit-metrics">
         <div class="card metric"><div class="metric-label">Core actions</div><div class="metric-value" id="audit-core-count">—</div><div class="metric-note">последние 100</div></div>
         <div class="card metric"><div class="metric-label">Durable events</div><div class="metric-value" id="audit-event-count">—</div><div class="metric-note">последние 100</div></div>

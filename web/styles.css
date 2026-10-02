@@ -64,9 +64,10 @@ button{cursor:pointer}
 .subtitle{color:var(--muted);font-size:13px;margin-top:5px}
 .actions{display:flex;gap:9px;flex-wrap:wrap}
 .btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
   border:1px solid var(--line);background:linear-gradient(180deg,#1c233b,#141a2e);
   color:var(--text);padding:10px 13px;border-radius:11px;font-weight:650;
-  transition:.16s ease
+  text-decoration:none;transition:.16s ease
 }
 .btn:hover{transform:translateY(-1px);border-color:#4a5688}
 .btn.primary{border-color:rgba(169,108,255,.55);background:linear-gradient(180deg,#7c4fd1,#5f38aa)}

@@ -3,14 +3,19 @@ from __future__ import annotations
 import json
 import mimetypes
 import os
+import platform
+import sys
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = ROOT.parent
+CONFIG_PATH = PROJECT_ROOT / "config" / "system.json"
 HOST = "127.0.0.1"
 PORT = 8710
 MAX_BODY_BYTES = 2_500_000
@@ -105,18 +110,146 @@ def _token() -> str:
     return os.getenv("TOORUDRAGON_API_TOKEN", "")
 
 
-def _upstream_json(path: str, timeout: float = 10.0) -> dict:
+def _fetch_upstream_json(
+    upstream: str,
+    path: str,
+    timeout: float = 10.0,
+) -> dict:
+    if upstream not in UPSTREAMS:
+        raise KeyError(upstream)
+
     headers = {"Accept": "application/json"}
     token = _token()
     if token:
         headers["Authorization"] = f"Bearer {token}"
     request = urllib.request.Request(
-        UPSTREAMS["main"] + path,
+        UPSTREAMS[upstream] + path,
         method="GET",
         headers=headers,
     )
     with urllib.request.urlopen(request, timeout=timeout) as response:
         return json.loads(response.read().decode("utf-8"))
+
+
+def _upstream_json(path: str, timeout: float = 10.0) -> dict:
+    return _fetch_upstream_json("main", path, timeout=timeout)
+
+
+def _safe_config() -> dict:
+    try:
+        raw = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"error": type(exc).__name__, "message": str(exc)}
+
+    sensitive = {"token", "api_key", "password", "secret", "authorization"}
+
+    def scrub(value):
+        if isinstance(value, dict):
+            cleaned = {}
+            for key, item in value.items():
+                lowered = str(key).lower()
+                if lowered in sensitive:
+                    cleaned[key] = "<redacted>"
+                else:
+                    cleaned[key] = scrub(item)
+            return cleaned
+        if isinstance(value, list):
+            return [scrub(item) for item in value]
+        return value
+
+    return scrub(raw)
+
+
+def _report_filename(now: datetime | None = None) -> str:
+    stamp = (now or datetime.now(timezone.utc)).strftime("%Y%m%d-%H%M%S")
+    return f"toorudragon-machine-report-{stamp}.json"
+
+
+def _build_machine_report(fetcher=None) -> dict:
+    fetcher = fetcher or _fetch_upstream_json
+    generated_at = datetime.now(timezone.utc).isoformat()
+
+    sources = {
+        "system.main.health": ("main", "/health"),
+        "system.main.cores": ("main", "/cores"),
+        "system.main.platform": ("main", "/platform"),
+        "system.main.observability": ("main", "/observability"),
+        "system.main.registry": ("main", "/registry"),
+        "system.main.watchdog": ("main", "/watchdog"),
+        "system.main.compatibility": ("main", "/compatibility"),
+        "workflow.tasks": ("main", "/api/tasks?limit=500"),
+        "workflow.core_history": ("main", "/api/core/history?limit=200"),
+        "events.recent": ("main", "/events?limit=200"),
+        "events.consumers": ("main", "/events/consumers"),
+        "ai.health": ("tooru_ai", "/health"),
+        "ai.runtime": ("tooru_ai", "/runtime"),
+        "ai.models": ("tooru_ai", "/models"),
+        "ai.reasoning": ("tooru_ai", "/reasoning/stats"),
+        "ai.conversations": ("tooru_ai", "/conversations?limit=100"),
+        "ai.rag_documents": ("tooru_ai", "/rag/documents?limit=200"),
+        "supervisor.health": ("supervisor", "/health"),
+        "supervisor.status": ("supervisor", "/status"),
+        "supervisor.deployments": ("supervisor", "/deployments"),
+        "gateway.health": ("gateway", "/health"),
+        "gateway.routes": ("gateway", "/routes"),
+    }
+
+    collected = {}
+    collection = {
+        "requested": len(sources),
+        "ok": 0,
+        "failed": 0,
+        "errors": [],
+    }
+
+    for key, (upstream, path) in sources.items():
+        try:
+            payload = fetcher(upstream, path, timeout=5.0)
+        except Exception as exc:
+            collection["failed"] += 1
+            collection["errors"].append({
+                "source": key,
+                "upstream": upstream,
+                "path": path,
+                "error_type": type(exc).__name__,
+                "message": str(exc),
+            })
+            continue
+
+        collection["ok"] += 1
+        collected[key] = payload
+
+    return {
+        "schema": "toorudragon.machine_report",
+        "schema_version": "1.0",
+        "generated_at": generated_at,
+        "project": {
+            "name": "TooruDragon",
+            "control_center_version": "0.3.0",
+        },
+        "environment": {
+            "os": platform.system(),
+            "os_release": platform.release(),
+            "machine": platform.machine(),
+            "python": platform.python_version(),
+            "python_implementation": platform.python_implementation(),
+            "executable_name": Path(sys.executable).name,
+        },
+        "configuration": _safe_config(),
+        "collection": collection,
+        "snapshot": collected,
+        "notes": {
+            "purpose": (
+                "Machine-readable diagnostic snapshot for restoring project context "
+                "and investigating runtime, AI, memory, reasoning, workflow, events, "
+                "Supervisor and Gateway state."
+            ),
+            "secret_policy": (
+                "Secret values are not exported. Configuration references may remain."
+            ),
+            "partial_report": bool(collection["failed"]),
+        },
+    }
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -139,6 +272,7 @@ class Handler(BaseHTTPRequestHandler):
         content_type: str,
         *,
         request_id: str | None = None,
+        extra_headers: dict[str, str] | None = None,
     ) -> None:
         self.send_response(status)
         self.send_header("Content-Type", content_type)
@@ -152,12 +286,32 @@ class Handler(BaseHTTPRequestHandler):
         )
         if request_id:
             self.send_header("X-Request-Id", request_id)
+        for key, value in (extra_headers or {}).items():
+            self.send_header(key, value)
         self.end_headers()
         self.wfile.write(body)
 
     def _json(self, status: int, payload: dict) -> None:
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self._send_bytes(status, body, "application/json; charset=utf-8")
+
+    def _download_machine_report(self) -> None:
+        report = _build_machine_report()
+        body = json.dumps(
+            report,
+            ensure_ascii=False,
+            indent=2,
+        ).encode("utf-8")
+        self._send_bytes(
+            200,
+            body,
+            "application/json; charset=utf-8",
+            extra_headers={
+                "Content-Disposition": (
+                    f'attachment; filename="{_report_filename()}"'
+                ),
+            },
+        )
 
     def _stream_events(self) -> None:
         self.send_response(200)
@@ -321,6 +475,10 @@ class Handler(BaseHTTPRequestHandler):
             })
 
     def do_GET(self) -> None:
+        parsed = urlsplit(self.path)
+        if parsed.path == "/report/system.json":
+            self._download_machine_report()
+            return
         if self.path == "/stream/events":
             self._stream_events()
             return
