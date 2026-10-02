@@ -398,8 +398,8 @@ class TimesheetService:
             items = grouped.get(employee["id"], [])
             summary = self._employee_summary(ctx, employee, items)
             people.append(summary)
+            totals["planned_hours"] += summary["planned_norm_hours"]
             for key in (
-                "planned_hours",
                 "actual_hours",
                 "overtime_hours",
                 "night_hours",
