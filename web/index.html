@@ -5,9 +5,32 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="color-scheme" content="light">
   <title>Дракончик Тоору · TooruDragon</title>
-  <link rel="stylesheet" href="/styles.css?v=ui-light-20261002">
+  <link rel="stylesheet" href="/styles.css?v=ui-system-20261002">
 </head>
 <body>
+<svg class="ui-sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5.5 10.5V20h13v-9.5"/><path d="M9.5 20v-6h5v6"/></symbol>
+  <symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 3 1.7 4.3L18 9l-4.3 1.7L12 15l-1.7-4.3L6 9l4.3-1.7L12 3Z"/><path d="m18.5 14 .9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9.9-2.1Z"/></symbol>
+  <symbol id="i-document" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5"/><path d="M9 12h6M9 16h6"/></symbol>
+  <symbol id="i-garage" viewBox="0 0 24 24"><path d="m3 10 9-6 9 6v10H3z"/><path d="M7 20v-7h10v7"/><path d="M9 16h6"/></symbol>
+  <symbol id="i-timesheet" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M8 3v4M16 3v4M4 9h16"/><path d="m9 14 2 2 4-4"/></symbol>
+  <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="2"/><path d="M9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4"/></symbol>
+  <symbol id="i-task" viewBox="0 0 24 24"><path d="M9 6h11M9 12h11M9 18h11"/><path d="m3.5 6 1.2 1.2L7 4.8M3.5 12l1.2 1.2L7 10.8M3.5 18l1.2 1.2L7 16.8"/></symbol>
+  <symbol id="i-workflow" viewBox="0 0 24 24"><rect x="3" y="4" width="6" height="5" rx="1"/><rect x="15" y="15" width="6" height="5" rx="1"/><rect x="15" y="4" width="6" height="5" rx="1"/><path d="M9 6.5h6M6 9v4c0 2 1 4 4 4h5"/></symbol>
+  <symbol id="i-activity" viewBox="0 0 24 24"><path d="M3 12h4l2-6 4 12 2-6h6"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7.5 7.5 0 0 0-.1-1l2-1.5-2-3.4-2.5 1a8 8 0 0 0-1.8-1L14.3 3h-4.6l-.3 3.1a8 8 0 0 0-1.8 1l-2.5-1-2 3.4 2 1.5a7.5 7.5 0 0 0 0 2L3 14.5l2 3.4 2.5-1a8 8 0 0 0 1.8 1l.4 3.1h4.6l.4-3.1a8 8 0 0 0 1.8-1l2.5 1 2-3.4-2.1-1.5c.1-.3.1-.7.1-1Z"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 20 6v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6z"/><path d="m8.5 12 2.2 2.2 4.8-5"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 7v5h-5"/><path d="M19 12a7 7 0 1 1-2-5"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m16.2 16.2 4.3 4.3"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M4 19h16"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.2 1.2"/><path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.2-1.2"/></symbol>
+  <symbol id="i-fuel" viewBox="0 0 24 24"><path d="M5 21V4h10v17"/><path d="M7 7h6v4H7z"/><path d="M15 8h2l2 2v7c0 1 .7 2 1.5 2S22 18 22 17v-6l-2-2"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c.7-4.2 3.4-6 8-6s7.3 1.8 8 6"/></symbol>
+  <symbol id="i-card" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18M7 15h4"/></symbol>
+  <symbol id="i-car" viewBox="0 0 24 24"><path d="m5 11 2-5h10l2 5"/><rect x="3" y="10" width="18" height="8" rx="2"/><circle cx="7" cy="18" r="1.5"/><circle cx="17" cy="18" r="1.5"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-archive" viewBox="0 0 24 24"><path d="M4 7h16v13H4z"/><path d="M3 4h18v3H3z"/><path d="M9 11h6"/></symbol>
+</svg>
 <div class="app">
   <aside class="sidebar" id="sidebar">
     <div class="brand">
@@ -16,21 +39,21 @@
     </div>
     <nav class="nav">
       <div class="nav-label">Главное</div>
-      <button class="active" data-page="dashboard"><span class="nav-icon">⌂</span><span>Главная</span></button>
-      <button data-page="agent"><span class="nav-icon">✦</span><span>Тоору</span></button>
+      <button class="active" data-page="dashboard"><span class="nav-icon"><svg class="ui-icon"><use href="#i-home"></use></svg></span><span>Главная</span></button>
+      <button data-page="agent"><span class="nav-icon"><svg class="ui-icon"><use href="#i-spark"></use></svg></span><span>Тоору</span></button>
 
       <div class="nav-label">Работа</div>
-      <button data-page="documents"><span class="nav-icon">▤</span><span>Документы</span></button>
-      <button data-page="garage"><span class="nav-icon">▣</span><span>Гараж · ГСМ</span></button>
-      <button data-page="timesheet"><span class="nav-icon">▦</span><span>Табель</span></button>
+      <button data-page="documents"><span class="nav-icon"><svg class="ui-icon"><use href="#i-document"></use></svg></span><span>Документы</span></button>
+      <button data-page="garage"><span class="nav-icon"><svg class="ui-icon"><use href="#i-garage"></use></svg></span><span>Гараж · ГСМ</span></button>
+      <button data-page="timesheet"><span class="nav-icon"><svg class="ui-icon"><use href="#i-timesheet"></use></svg></span><span>Табель</span></button>
 
       <div class="nav-label">Система</div>
-      <button data-page="cores"><span class="nav-icon">◈</span><span>Ядра</span></button>
-      <button data-page="tasks"><span class="nav-icon">✓</span><span>Задачи</span></button>
-      <button data-page="workflow"><span class="nav-icon">◇</span><span>Процессы</span></button>
-      <button data-page="events"><span class="nav-icon">⌁</span><span>События</span></button>
-      <button data-page="control"><span class="nav-icon">⚙</span><span>Система</span></button>
-      <button data-page="audit"><span class="nav-icon">☷</span><span>Диагностика</span></button>
+      <button data-page="cores"><span class="nav-icon"><svg class="ui-icon"><use href="#i-cpu"></use></svg></span><span>Ядра</span></button>
+      <button data-page="tasks"><span class="nav-icon"><svg class="ui-icon"><use href="#i-task"></use></svg></span><span>Задачи</span></button>
+      <button data-page="workflow"><span class="nav-icon"><svg class="ui-icon"><use href="#i-workflow"></use></svg></span><span>Процессы</span></button>
+      <button data-page="events"><span class="nav-icon"><svg class="ui-icon"><use href="#i-activity"></use></svg></span><span>События</span></button>
+      <button data-page="control"><span class="nav-icon"><svg class="ui-icon"><use href="#i-settings"></use></svg></span><span>Система</span></button>
+      <button data-page="audit"><span class="nav-icon"><svg class="ui-icon"><use href="#i-shield"></use></svg></span><span>Диагностика</span></button>
     </nav>
     <div class="side-footer">
       <div class="connection"><span id="conn-dot" class="dot"></span><span id="conn-text">Подключение...</span><br>Gateway :8698 · Supervisor :8699</div>
@@ -40,7 +63,8 @@
   <main class="main">
     <header class="topbar">
       <div class="topbar-title">
-        <button class="btn mobile-menu" id="mobile-menu">☰</button>
+        <button class="btn mobile-menu" id="mobile-menu" aria-label="Открыть меню">☰</button>
+        <span class="page-icon" id="page-icon"><svg class="ui-icon"><use href="#i-home"></use></svg></span>
         <div>
           <h2 id="page-title">Главная</h2>
           <div class="subtitle" id="page-subtitle">Ваш рабочий центр Тоору</div>
@@ -49,7 +73,7 @@
       <div class="actions topbar-actions">
         <span class="tooru-presence"><span class="presence-dot"></span>Тоору рядом</span>
         <span id="safe-mode-badge" class="status-pill online">Safe Mode выключен</span>
-        <button class="btn icon-btn" id="refresh" title="Обновить данные">↻</button>
+        <button class="btn icon-btn" id="refresh" title="Обновить данные" aria-label="Обновить данные"><svg class="ui-icon"><use href="#i-refresh"></use></svg></button>
       </div>
     </header>
 
@@ -60,9 +84,9 @@
           <div class="hero-title">Всё важное — в одном спокойном интерфейсе.</div>
           <div class="hero-copy">Документы, путевые листы, ГСМ, автомобили и табель связаны между собой. Тоору остаётся рядом и показывает только то, что действительно требует внимания.</div>
           <div class="hero-actions">
-            <button class="btn primary" data-open-page="agent">✦ Открыть Тоору</button>
-            <button class="btn" data-open-page="documents">▤ Документы</button>
-            <button class="btn" data-open-page="garage">▣ Гараж · ГСМ</button>
+            <button class="btn primary" data-open-page="agent"><svg class="ui-icon"><use href="#i-spark"></use></svg>Открыть Тоору</button>
+            <button class="btn" data-open-page="documents"><svg class="ui-icon"><use href="#i-document"></use></svg>Документы</button>
+            <button class="btn" data-open-page="garage"><svg class="ui-icon"><use href="#i-garage"></use></svg>Гараж · ГСМ</button>
           </div>
         </div>
         <div class="hero-card health-score">
@@ -74,16 +98,16 @@
       </div>
 
       <div class="quick-launch">
-        <button class="quick-card" data-open-page="documents"><span class="quick-icon">▤</span><span><strong>Документы Тоору</strong><small>Паспорт, ДНК, путевые листы и проверки</small></span><b>›</b></button>
-        <button class="quick-card" data-open-page="garage"><span class="quick-icon">▣</span><span><strong>Гараж · ГСМ</strong><small>Машины, карты, топливо и расход</small></span><b>›</b></button>
-        <button class="quick-card" data-open-page="timesheet"><span class="quick-icon">▦</span><span><strong>Табель</strong><small>Рабочее время и подтверждённая переработка</small></span><b>›</b></button>
+        <button class="quick-card" data-open-page="documents"><span class="quick-icon"><svg class="ui-icon"><use href="#i-document"></use></svg></span><span><strong>Документы Тоору</strong><small>Паспорт, ДНК, путевые листы и проверки</small></span><b>›</b></button>
+        <button class="quick-card" data-open-page="garage"><span class="quick-icon"><svg class="ui-icon"><use href="#i-garage"></use></svg></span><span><strong>Гараж · ГСМ</strong><small>Машины, карты, топливо и расход</small></span><b>›</b></button>
+        <button class="quick-card" data-open-page="timesheet"><span class="quick-icon"><svg class="ui-icon"><use href="#i-timesheet"></use></svg></span><span><strong>Табель</strong><small>Рабочее время и подтверждённая переработка</small></span><b>›</b></button>
       </div>
 
       <div class="grid dashboard-metrics">
-        <div class="card metric"><div class="metric-icon">◈</div><div class="metric-label">Модули online</div><div class="metric-value" id="metric-cores">—</div><div class="metric-note">состояние рабочих ядер</div></div>
-        <div class="card metric"><div class="metric-icon">◌</div><div class="metric-label">Память Main</div><div class="metric-value" id="metric-memory">—</div><div class="metric-note">использование RAM</div></div>
-        <div class="card metric"><div class="metric-icon">⌁</div><div class="metric-label">События</div><div class="metric-value" id="metric-events">—</div><div class="metric-note">надёжная шина событий</div></div>
-        <div class="card metric"><div class="metric-icon">✓</div><div class="metric-label">Время работы</div><div class="metric-value" id="metric-uptime">—</div><div class="metric-note"><span id="deployment-count">0</span> активное развёртывание</div></div>
+        <div class="card metric"><div class="metric-icon"><svg class="ui-icon"><use href="#i-cpu"></use></svg></div><div class="metric-label">Модули online</div><div class="metric-value" id="metric-cores">—</div><div class="metric-note">состояние рабочих ядер</div></div>
+        <div class="card metric"><div class="metric-icon"><svg class="ui-icon"><use href="#i-activity"></use></svg></div><div class="metric-label">Память Main</div><div class="metric-value" id="metric-memory">—</div><div class="metric-note">использование RAM</div></div>
+        <div class="card metric"><div class="metric-icon"><svg class="ui-icon"><use href="#i-workflow"></use></svg></div><div class="metric-label">События</div><div class="metric-value" id="metric-events">—</div><div class="metric-note">надёжная шина событий</div></div>
+        <div class="card metric"><div class="metric-icon"><svg class="ui-icon"><use href="#i-clock"></use></svg></div><div class="metric-label">Время работы</div><div class="metric-value" id="metric-uptime">—</div><div class="metric-note"><span id="deployment-count">0</span> активное развёртывание</div></div>
       </div>
       <div class="section">
         <div class="section-head"><h3>Состояние системы</h3><span class="status-pill online" id="telemetry-badge">обновление 5 сек</span></div>
@@ -111,7 +135,7 @@
     <section class="page" data-page="tasks">
       <div class="two-col">
         <div>
-          <div class="section-head"><h3>Durable Tasks</h3><button class="btn" id="tasks-refresh">↻</button></div>
+          <div class="section-head"><h3>Durable Tasks</h3><button class="btn icon-btn" id="tasks-refresh" aria-label="Обновить задачи" title="Обновить"><svg class="ui-icon"><use href="#i-refresh"></use></svg></button></div>
           <div class="table-wrap"><table>
             <thead><tr><th>ID</th><th>Kind</th><th>State</th><th>Priority</th><th>Attempts</th><th>Workflow</th><th>Created</th></tr></thead>
             <tbody id="tasks-body"></tbody>
@@ -138,7 +162,7 @@
         <h3>Workflow Graph</h3>
         <div class="actions">
           <select id="workflow-select" class="compact-select"></select>
-          <button class="btn" id="workflow-refresh">↻ Обновить</button>
+          <button class="btn" id="workflow-refresh"><svg class="ui-icon"><use href="#i-refresh"></use></svg>Обновить</button>
         </div>
       </div>
       <div class="card panel workflow-canvas-wrap">
@@ -158,7 +182,7 @@
 
     <section class="page" data-page="events">
       <div class="card panel">
-        <div class="section-head"><h3>Durable Event Fabric</h3><div class="actions"><span class="status-pill" id="live-stream-badge">LIVE CONNECTING</span><button class="btn" id="events-refresh">↻</button></div></div>
+        <div class="section-head"><h3>Durable Event Fabric</h3><div class="actions"><span class="status-pill" id="live-stream-badge">LIVE CONNECTING</span><button class="btn icon-btn" id="events-refresh" aria-label="Обновить события" title="Обновить"><svg class="ui-icon"><use href="#i-refresh"></use></svg></button></div></div>
         <ul class="log" id="event-log"></ul>
       </div>
     </section>
@@ -222,8 +246,8 @@
         </div>
         <div class="actions">
           <input id="documents-search" class="compact-input" placeholder="Поиск по документам">
-          <button class="btn" id="documents-search-btn">Найти</button>
-          <button class="btn" id="documents-refresh">↻ Обновить</button>
+          <button class="btn" id="documents-search-btn"><svg class="ui-icon"><use href="#i-search"></use></svg>Найти</button>
+          <button class="btn" id="documents-refresh"><svg class="ui-icon"><use href="#i-refresh"></use></svg>Обновить</button>
         </div>
       </div>
 
@@ -247,7 +271,7 @@
             <label>PDF / JPG / PNG / TIFF</label>
             <input id="waybill-batch-file" type="file" accept=".pdf,.jpg,.jpeg,.png,.tif,.tiff">
           </div>
-          <button class="btn primary" id="waybill-batch-upload" style="margin-top:12px;width:100%">Загрузить пачку путевых листов</button>
+          <button class="btn primary btn-block field-action" id="waybill-batch-upload"><svg class="ui-icon"><use href="#i-upload"></use></svg>Загрузить пачку путевых листов</button>
           <div class="waybill-upload-progress" id="waybill-upload-progress" hidden>
             <div class="section-head"><span id="waybill-upload-label">Загрузка...</span><strong id="waybill-upload-percent">0%</strong></div>
             <div class="waybill-progress-track"><div id="waybill-upload-bar" class="waybill-progress-bar"></div></div>
@@ -297,7 +321,7 @@
               </select>
             </div>
           </div>
-          <button class="btn primary" id="doc-file-ingest" style="margin-top:12px;width:100%">Изучить файл</button>
+          <button class="btn primary btn-block field-action" id="doc-file-ingest"><svg class="ui-icon"><use href="#i-upload"></use></svg>Изучить файл</button>
           <div class="subtitle" style="margin-top:10px">DOCX/XLSX/TXT и выписки .XLS читаются встроенно. PDF — через pypdf. Старый .DOC покажет явную причину вместо молчаливой ошибки.</div>
         </div>
 
@@ -349,8 +373,8 @@
                 <div class="subtitle" id="document-meta"></div>
               </div>
               <div class="actions">
-                <button class="btn" id="document-reanalyze">↻ Переизучить</button>
-                <button class="btn danger" id="document-archive">В архив</button>
+                <button class="btn" id="document-reanalyze"><svg class="ui-icon"><use href="#i-refresh"></use></svg>Переизучить</button>
+                <button class="btn danger" id="document-archive"><svg class="ui-icon"><use href="#i-archive"></use></svg>В архив</button>
               </div>
             </div>
 
@@ -388,8 +412,8 @@
         </div>
         <div class="actions">
           <input id="garage-month" type="month" class="compact-input">
-          <button class="btn" id="garage-reconcile">⟳ Пересвязать</button>
-          <button class="btn" id="garage-refresh">↻ Обновить</button>
+          <button class="btn" id="garage-reconcile"><svg class="ui-icon"><use href="#i-link"></use></svg>Пересвязать</button>
+          <button class="btn" id="garage-refresh"><svg class="ui-icon"><use href="#i-refresh"></use></svg>Обновить</button>
         </div>
       </div>
 
@@ -433,8 +457,8 @@
             <div class="field"><label>Действует с</label><input id="garage-assignment-date" type="date"><small>Оставьте пустым для первой привязки — она применится и к прошлым выпискам.</small></div>
           </div>
           <div class="actions" style="margin-top:12px">
-            <button class="btn" id="garage-card-assign">Привязать карту</button>
-            <button class="btn primary" id="garage-vehicle-assign">Привязать автомобиль</button>
+            <button class="btn" id="garage-card-assign"><svg class="ui-icon"><use href="#i-card"></use></svg>Привязать карту</button>
+            <button class="btn primary" id="garage-vehicle-assign"><svg class="ui-icon"><use href="#i-car"></use></svg>Привязать автомобиль</button>
           </div>
           <div id="garage-driver-directory" class="garage-driver-directory"></div>
         </div>
@@ -506,7 +530,7 @@
         </div>
         <div class="actions">
           <input id="timesheet-month" type="month" class="compact-input">
-          <button class="btn" id="timesheet-refresh">↻ Обновить</button>
+          <button class="btn" id="timesheet-refresh"><svg class="ui-icon"><use href="#i-refresh"></use></svg>Обновить</button>
         </div>
       </div>
 
@@ -664,7 +688,7 @@
         <tbody id="deployments-body"></tbody>
       </table></div>
       <div class="section card panel">
-        <div class="section-head"><h3>Control Plane snapshot</h3><button class="btn" id="control-refresh">↻</button></div>
+        <div class="section-head"><h3>Control Plane snapshot</h3><button class="btn icon-btn" id="control-refresh" aria-label="Обновить систему" title="Обновить"><svg class="ui-icon"><use href="#i-refresh"></use></svg></button></div>
         <pre class="json" id="control-json">Загрузка...</pre>
       </div>
     </section>
@@ -688,7 +712,7 @@
       </div>
       <div class="section two-col">
         <div class="card panel">
-          <div class="section-head"><h3>Core lifecycle audit</h3><button class="btn" id="audit-refresh">↻</button></div>
+          <div class="section-head"><h3>Core lifecycle audit</h3><button class="btn icon-btn" id="audit-refresh" aria-label="Обновить аудит" title="Обновить"><svg class="ui-icon"><use href="#i-refresh"></use></svg></button></div>
           <div class="table-wrap"><table>
             <thead><tr><th>Time</th><th>Core</th><th>Action</th><th>OK</th><th>Message</th></tr></thead>
             <tbody id="audit-core-body"></tbody>
@@ -708,9 +732,9 @@
 <button class="tooru-dock" id="tooru-dock" data-open-page="agent" aria-label="Открыть Тоору">
   <span class="tooru-dock-avatar">🐉</span>
   <span class="tooru-dock-copy"><strong>Тоору</strong><small>Всегда рядом</small></span>
-  <span class="tooru-dock-arrow">✦</span>
+  <span class="tooru-dock-arrow"><svg class="ui-icon"><use href="#i-spark"></use></svg></span>
 </button>
 <div class="toast" id="toast"></div>
-<script src="/app.js?v=ui-light-20261002"></script>
+<script src="/app.js?v=ui-system-20261002"></script>
 </body>
 </html>

@@ -47,13 +47,31 @@ const state = {
 };
 
 const coreNames = {
-  main: ["♛","Главное ядро"],
-  tooru_ai: ["🐉","Tooru/AI"],
-  laboratory: ["⚗","Лаборатория"],
-  home: ["⌂","Дом"],
-  work: ["▣","Работа"],
-  mobile: ["▯","Mobile"],
+  main: ["cpu","Главное ядро"],
+  tooru_ai: ["spark","Tooru/AI"],
+  laboratory: ["activity","Лаборатория"],
+  home: ["home","Дом"],
+  work: ["workflow","Работа"],
+  mobile: ["settings","Mobile"],
 };
+
+const pageIcons = {
+  dashboard:"home",
+  agent:"spark",
+  documents:"document",
+  garage:"garage",
+  timesheet:"timesheet",
+  cores:"cpu",
+  tasks:"task",
+  workflow:"workflow",
+  events:"activity",
+  control:"settings",
+  audit:"shield",
+};
+
+function svgIcon(name, className="ui-icon") {
+  return '<svg class="'+className+'" aria-hidden="true"><use href="#i-'+escapeHtml(name)+'"></use></svg>';
+}
 
 function api(path, options={}) {
   return fetch(path, {
@@ -399,10 +417,10 @@ function renderCores() {
     return;
   }
   const html = Object.entries(cores).map(([key,c]) => {
-    const [icon,name] = coreNames[key] || ["⚙",key];
+    const [icon,name] = coreNames[key] || ["settings",key];
     return `<article class="card core-card">
       <div class="core-head">
-        <div class="core-title">${icon} ${escapeHtml(name)}</div>
+        <div class="core-title"><span class="module-icon">${svgIcon(icon)}</span><span>${escapeHtml(name)}</span></div>
         <span class="status-pill ${c.online?"online":""}">${c.online?"ONLINE":"OFFLINE"}</span>
       </div>
       <div class="meta">
@@ -412,9 +430,9 @@ function renderCores() {
         <div>Latency<strong>${c.latency_ms==null?"—":escapeHtml(c.latency_ms)+" ms"}</strong></div>
       </div>
       <div class="card-actions">
-        <button class="btn good" data-core-action="start" data-core="${key}">Start</button>
-        <button class="btn" data-core-action="restart" data-core="${key}">Restart</button>
-        <button class="btn danger" data-core-action="stop" data-core="${key}">Stop</button>
+        <button class="btn good" data-core-action="start" data-core="${key}">${svgIcon("task")}Запустить</button>
+        <button class="btn" data-core-action="restart" data-core="${key}">${svgIcon("refresh")}Перезапустить</button>
+        <button class="btn danger" data-core-action="stop" data-core="${key}">Остановить</button>
       </div>
     </article>`;
   }).join("");
@@ -1934,6 +1952,9 @@ function showPage(name) {
   };
   $("#page-title").textContent = titles[name][0];
   $("#page-subtitle").textContent = titles[name][1];
+  document.body.dataset.page = name;
+  const pageIcon = $("#page-icon");
+  if (pageIcon) pageIcon.innerHTML = svgIcon(pageIcons[name] || "settings");
   if(name==="tasks") loadTasks();
   if(name==="workflow") loadWorkflow();
   if(name==="events") loadEvents();
