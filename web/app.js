@@ -1920,17 +1920,17 @@ function showPage(name) {
   $$(".page").forEach(p=>p.classList.toggle("active",p.dataset.page===name));
   $$(".nav button").forEach(b=>b.classList.toggle("active",b.dataset.page===name));
   const titles = {
-    dashboard:["Обзор","Состояние всей системы"],
-    cores:["Ядра","Управление lifecycle через External Supervisor"],
-    tasks:["Задачи","Durable Workflow Engine"],
-    workflow:["Workflow","Граф зависимостей durable-задач"],
-    events:["События","Durable Event Fabric · live SSE"],
-    agent:["Agent Console","Tool Router, Planner и execution transcript"],
-    documents:["Документы Тоору","Паспорт, ДНК, версии, связи, проверки и автоматическое изучение"],
-    garage:["Гараж · ГСМ","Карты, водители, автомобили, путевые листы и месячная сверка топлива"],
-    timesheet:["Табель","Рабочее время, нормы, фактические часы и контроль отклонений"],
-    control:["Control Plane","Supervisor, Gateway, deployments и consumers"],
-    audit:["Audit","Lifecycle, events и consumer integrity"],
+    dashboard:["Главная","Ваш рабочий центр Тоору"],
+    cores:["Ядра","Состояние и управление модулями системы"],
+    tasks:["Задачи","Фоновые и пользовательские процессы"],
+    workflow:["Процессы","Граф выполнения и зависимостей задач"],
+    events:["События","Что происходит внутри системы прямо сейчас"],
+    agent:["Тоору","Личный помощник, память и рабочий контекст"],
+    documents:["Документы Тоору","Документы, путевые листы, Паспорт, ДНК и проверки"],
+    garage:["Гараж · ГСМ","Автомобили, водители, карты, путевые листы и топливо"],
+    timesheet:["Табель","Рабочее время и подтверждение переработки"],
+    control:["Система","Supervisor, Gateway и управление сервисами"],
+    audit:["Диагностика","Отчёты, аудит, ошибки и целостность системы"],
   };
   $("#page-title").textContent = titles[name][0];
   $("#page-subtitle").textContent = titles[name][1];
@@ -1962,6 +1962,11 @@ $("#refresh").addEventListener("click",async()=>{
 });
 
 document.addEventListener("click", event => {
+  const openPage = event.target.closest("[data-open-page]");
+  if (openPage) {
+    showPage(openPage.dataset.openPage);
+    return;
+  }
   const coreButton = event.target.closest("[data-core-action]");
   if (coreButton) {
     coreAction(coreButton.dataset.core, coreButton.dataset.coreAction);
