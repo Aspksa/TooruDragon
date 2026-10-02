@@ -1419,6 +1419,30 @@ class WaybillAutomationService:
                             )
                 previous = current
 
+            for left_index, left in enumerate(rows):
+                for right in rows[left_index + 1:]:
+                    if left.get("trip_date") != right.get("trip_date"):
+                        break
+                    if (
+                        left.get("employee_id")
+                        and right.get("employee_id")
+                        and left["employee_id"] != right["employee_id"]
+                        and self._intervals_overlap(left, right)
+                    ):
+                        self._anomaly(
+                            right["id"],
+                            "vehicle_two_drivers_same_time",
+                            "error",
+                            "Один автомобиль одновременно указан у разных водителей.",
+                            {
+                                "other_waybill_id": left["id"],
+                                "employee_ids": [
+                                    left["employee_id"],
+                                    right["employee_id"],
+                                ],
+                            },
+                        )
+
         for employee_id, rows in by_driver.items():
             rows.sort(key=lambda item: (item.get("trip_date") or "", item.get("departure_time") or ""))
             for index, left in enumerate(rows):
