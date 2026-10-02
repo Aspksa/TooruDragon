@@ -119,6 +119,8 @@ class GarageFuelService:
             """,
             (employee_id,),
         )
+        if current and start is None:
+            start = date.today().isoformat()
         for item in current:
             if item["card_number"] == number:
                 return self.employee_card(employee_id) or {}
@@ -326,6 +328,8 @@ class GarageFuelService:
             """,
             (employee_id,),
         )
+        if current and start is None:
+            start = date.today().isoformat()
         for item in current:
             if item["vehicle_id"] == vehicle_id:
                 return self.driver_assignment(employee_id) or {}
@@ -802,7 +806,7 @@ class GarageFuelService:
         return rows
 
     def unresolved_cards(self, month: str | None = None) -> list[dict]:
-        clauses = ["t.employee_id IS NULL"]
+        clauses = ["t.resolution_status!='linked'"]
         params: list = []
         if month:
             start, end = _month_bounds(month)
@@ -812,14 +816,18 @@ class GarageFuelService:
             f"""
             SELECT t.card_number,
                    MAX(t.holder_label) AS holder_label,
+                   t.resolution_status,
+                   t.employee_id,
+                   MAX(e.full_name) AS full_name,
                    COUNT(*) AS transactions,
                    ROUND(SUM(t.quantity_l), 4) AS liters,
                    ROUND(SUM(t.amount), 2) AS amount,
                    MIN(t.operation_date) AS first_date,
                    MAX(t.operation_date) AS last_date
             FROM garage_fuel_transactions t
+            LEFT JOIN work_employees e ON e.id=t.employee_id
             WHERE {' AND '.join(clauses)}
-            GROUP BY t.card_number
+            GROUP BY t.card_number, t.resolution_status, t.employee_id
             ORDER BY amount DESC, t.card_number
             """,
             tuple(params),
