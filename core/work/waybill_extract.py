@@ -153,9 +153,11 @@ def _labeled_line(
         match = pattern.search(text)
         if not match:
             continue
-        value = match.group(1).strip(" :;-")
+        value = match.group(1).strip()
         if transform:
             value = transform(value)
+        else:
+            value = value.strip(" :;-")
         if value in {None, ""}:
             continue
         return _field(
