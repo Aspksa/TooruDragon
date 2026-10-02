@@ -111,7 +111,10 @@ class WebControlCenterProxyTests(unittest.TestCase):
         self.assertIn('id="document-dna"', html)
         self.assertNotIn('id="ai-rag-ingest"', html)
         self.assertNotIn("loadRAGDocuments()", script)
-        self.assertIn('$("[data-ts-custom-id]")', script)
+        self.assertIn(
+            'document.querySelectorAll("[data-ts-custom-id]")',
+            script,
+        )
 
     def test_machine_report_includes_document_intelligence(self):
         calls = []
