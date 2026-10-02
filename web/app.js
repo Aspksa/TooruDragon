@@ -14,6 +14,12 @@ const state = {
   selectedWorkflow: null,
   latencyHistory: [],
   aiConversationId: null,
+  documents: {
+    items: [],
+    selectedId: null,
+    selected: null,
+    stats: null,
+  },
   timesheet: {
     employees: [],
     calendar: null,
@@ -656,47 +662,242 @@ async function searchAIMemory() {
   }
 }
 
-async function loadRAGDocuments() {
+const documentTypeLabels = {
+  service_memo:"Служебная записка",
+  contract:"Договор",
+  invoice_offer:"Счёт-оферта",
+  invoice:"Счёт",
+  act:"Акт",
+  order:"Приказ",
+  timesheet:"Табель",
+  vehicle_document:"Документ на технику",
+  other:"Прочее",
+};
+
+function renderDocumentStats(stats) {
+  const docs = stats?.documents || {};
+  const issues = stats?.open_issues || {};
+  $("#doc-metric-active").textContent = docs.active ?? 0;
+  $("#doc-metric-archived").textContent = docs.archived ?? 0;
+  $("#doc-metric-errors").textContent = issues.error ?? 0;
+  $("#doc-metric-warnings").textContent = issues.warning ?? 0;
+}
+
+function renderDocumentsList(items) {
+  state.documents.items = items || [];
+  const root = $("#documents-list");
+  if (!root) return;
+  root.innerHTML = state.documents.items.map(item => {
+    const selected = item.id === state.documents.selectedId ? " selected" : "";
+    const issueCount = Number(item.issue_count || 0);
+    return '<button class="document-row'+selected+'" data-document-id="'+escapeHtml(item.id)+'">'+
+      '<div class="document-row-top"><strong>'+escapeHtml(item.title)+'</strong>'+
+      '<span class="status-pill '+(issueCount ? "" : "online")+'">'+escapeHtml(issueCount)+' проверок</span></div>'+
+      '<div class="document-row-meta">'+
+        '<span>'+escapeHtml(documentTypeLabels[item.document_type] || item.document_type)+'</span>'+
+        '<span>v'+escapeHtml(item.version)+'</span>'+
+        (item.document_number ? '<span>№ '+escapeHtml(item.document_number)+'</span>' : '')+
+        (item.year ? '<span>'+escapeHtml(item.year)+'</span>' : '')+
+      '</div>'+
+      '<small>'+escapeHtml(item.archive_path || "")+'</small>'+
+    '</button>';
+  }).join("") || '<div class="empty">Документов пока нет.</div>';
+}
+
+function renderDocumentDetail(item) {
+  state.documents.selected = item;
+  state.documents.selectedId = item?.id || null;
+  const empty = $("#document-empty");
+  const detail = $("#document-detail");
+  if (!item) {
+    empty.hidden = false;
+    detail.hidden = true;
+    return;
+  }
+  empty.hidden = true;
+  detail.hidden = false;
+  $("#document-title").textContent = item.title || "Документ";
+  $("#document-meta").textContent = [
+    documentTypeLabels[item.document_type] || item.document_type,
+    "v"+item.version,
+    item.document_number ? "№ "+item.document_number : null,
+    item.document_date,
+    item.archive_path,
+  ].filter(Boolean).join(" · ");
+  $("#document-passport").textContent = JSON.stringify(item.passport || {}, null, 2);
+  $("#document-dna").textContent = JSON.stringify(item.dna || {}, null, 2);
+  $("#document-text").textContent = item.text_content || "";
+
+  $("#document-facts").innerHTML = (item.facts || []).map(fact => {
+    const p = fact.provenance || {};
+    return '<div class="document-fact">'+
+      '<div class="document-fact-head"><strong>'+escapeHtml(fact.fact_key)+'</strong>'+
+      '<span>'+Math.round(Number(fact.confidence || 0)*100)+'%</span></div>'+
+      '<div>'+escapeHtml(fact.value_text)+'</div>'+
+      (p.excerpt ? '<small>'+escapeHtml(p.excerpt)+'</small>' : '')+
+    '</div>';
+  }).join("") || '<div class="empty">Факты не извлечены.</div>';
+
+  $("#document-issues").innerHTML = (item.issues || []).map(issue =>
+    '<div class="document-issue '+escapeHtml(issue.severity)+'">'+
+      '<div><strong>'+escapeHtml(issue.severity.toUpperCase())+'</strong> · '+escapeHtml(issue.issue_type)+'</div>'+
+      '<div>'+escapeHtml(issue.message)+'</div>'+
+    '</div>'
+  ).join("") || '<div class="empty">Тоору не нашла проблем.</div>';
+
+  $("#document-relations").innerHTML = (item.relations || []).map(rel =>
+    '<button class="stack-item document-relation" data-document-id="'+escapeHtml(rel.target_document_id)+'">'+
+      '<strong>'+escapeHtml(rel.relation_type)+'</strong> · '+escapeHtml(rel.target_title || rel.target_document_id)+
+      '<div class="subtitle">score '+escapeHtml(rel.score)+'</div>'+
+    '</button>'
+  ).join("") || '<div class="empty">Связей с другими документами пока нет.</div>';
+
+  renderDocumentsList(state.documents.items);
+}
+
+async function loadDocuments() {
+  const query = $("#documents-search")?.value.trim() || "";
+  const type = $("#documents-type-filter")?.value || "";
   try {
-    const data = await api("/api/tooru_ai/rag/documents?limit=50");
-    $("#ai-rag-results").textContent = JSON.stringify(data.documents || [], null, 2);
+    const statsPromise = api("/api/work/documents/stats");
+    let listPromise;
+    if (query) {
+      listPromise = api("/api/work/documents/search?q="+encodeURIComponent(query)+"&limit=100");
+    } else {
+      const params = new URLSearchParams({limit:"100"});
+      if (type) params.set("type", type);
+      listPromise = api("/api/work/documents?"+params.toString());
+    }
+    const [statsData, listData] = await Promise.all([statsPromise, listPromise]);
+    state.documents.stats = statsData.stats || {};
+    renderDocumentStats(state.documents.stats);
+    renderDocumentsList(listData.documents || []);
+    if (state.documents.selectedId) {
+      const stillVisible = (listData.documents || []).some(item=>item.id===state.documents.selectedId);
+      if (!stillVisible && !query) renderDocumentDetail(null);
+    }
   } catch (e) {
-    $("#ai-rag-results").textContent = e.message;
+    toast("Документы: "+e.message, true);
   }
 }
 
-async function ingestRAGDocument() {
-  const text = $("#ai-rag-text").value.trim();
-  if (!text) return;
+async function openDocument(documentId) {
+  if (!documentId) return;
   try {
-    const data = await api("/api/tooru_ai/rag/ingest", {
+    const data = await api("/api/work/documents/get?id="+encodeURIComponent(documentId));
+    renderDocumentDetail(data.document);
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Не удалось прочитать файл"));
+    reader.onload = () => {
+      const bytes = new Uint8Array(reader.result);
+      let binary = "";
+      const step = 0x8000;
+      for (let i=0; i<bytes.length; i+=step) {
+        binary += String.fromCharCode(...bytes.subarray(i, i+step));
+      }
+      resolve(btoa(binary));
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+async function ingestDocumentFile() {
+  const file = $("#doc-file").files?.[0];
+  if (!file) {
+    toast("Выберите файл", true);
+    return;
+  }
+  if (file.size > 12_000_000) {
+    toast("Файл больше 12 МБ", true);
+    return;
+  }
+  const button = $("#doc-file-ingest");
+  button.disabled = true;
+  button.textContent = "Изучаю...";
+  try {
+    const contentBase64 = await fileToBase64(file);
+    const data = await api("/api/work/documents/file-ingest", {
       method:"POST",
       body:JSON.stringify({
-        text,
-        title:$("#ai-rag-title").value.trim() || null,
-        source:$("#ai-rag-source").value.trim() || "web",
+        filename:file.name,
+        content_base64:contentBase64,
+        title:$("#doc-file-title").value.trim() || null,
+        document_type:$("#doc-file-type").value || null,
+        source:"web_file",
       }),
     });
-    $("#ai-rag-text").value = "";
-    $("#ai-rag-results").textContent = JSON.stringify(data.document, null, 2);
-    appendConsole("RAG", `indexed ${data.document.chunk_count} chunks · ${data.document.id.slice(0,8)}`);
-    toast("Документ проиндексирован");
+    $("#doc-file").value = "";
+    $("#doc-file-title").value = "";
+    await loadDocuments();
+    await openDocument(data.document.id);
+    toast(data.document.duplicate ? "Дубликат уже был изучен" : "Документ изучен");
   } catch (e) {
-    appendConsole("ERROR", "rag ingest: " + e.message, true);
-    toast(e.message, true);
+    toast("Документ: "+e.message, true);
+  } finally {
+    button.disabled = false;
+    button.textContent = "Изучить файл";
   }
 }
 
-async function searchRAGDocuments() {
-  const query = $("#ai-memory-input").value.trim() || $("#ai-chat-input").value.trim();
-  if (!query) return;
-  try {
-    const data = await api(`/api/tooru_ai/rag/search?q=${encodeURIComponent(query)}&limit=10`);
-    $("#ai-rag-results").textContent = JSON.stringify(data.chunks || [], null, 2);
-  } catch (e) {
-    $("#ai-rag-results").textContent = e.message;
-    toast(e.message, true);
+async function ingestDocumentText() {
+  const text = $("#doc-text-content").value.trim();
+  if (!text) {
+    toast("Вставьте текст документа", true);
+    return;
   }
+  try {
+    const data = await api("/api/work/documents/ingest", {
+      method:"POST",
+      body:JSON.stringify({
+        title:$("#doc-text-title").value.trim() || "Документ",
+        text,
+        source:"web_text",
+      }),
+    });
+    $("#doc-text-content").value = "";
+    $("#doc-text-title").value = "";
+    await loadDocuments();
+    await openDocument(data.document.id);
+    toast(data.document.duplicate ? "Дубликат уже был изучен" : "Документ изучен");
+  } catch (e) {
+    toast("Документ: "+e.message, true);
+  }
+}
+
+async function reanalyzeDocument() {
+  const id = state.documents.selectedId;
+  if (!id) return;
+  try {
+    const data = await api("/api/work/documents/reanalyze", {
+      method:"POST",
+      body:JSON.stringify({document_id:id}),
+    });
+    await loadDocuments();
+    renderDocumentDetail(data.document);
+    toast("Документ переизучен");
+  } catch (e) { toast(e.message, true); }
+}
+
+async function archiveDocument() {
+  const id = state.documents.selectedId;
+  if (!id) return;
+  try {
+    await api("/api/work/documents/archive", {
+      method:"POST",
+      body:JSON.stringify({document_id:id}),
+    });
+    state.documents.selectedId = null;
+    renderDocumentDetail(null);
+    await loadDocuments();
+    toast("Документ перенесён в архив");
+  } catch (e) { toast(e.message, true); }
 }
 
 async function loadAgent() {
@@ -1048,6 +1249,7 @@ function showPage(name) {
     workflow:["Workflow","Граф зависимостей durable-задач"],
     events:["События","Durable Event Fabric · live SSE"],
     agent:["Agent Console","Tool Router, Planner и execution transcript"],
+    documents:["Документы Тоору","Паспорт, ДНК, версии, связи, проверки и автоматическое изучение"],
     timesheet:["Табель","Рабочее время, нормы, фактические часы и контроль отклонений"],
     control:["Control Plane","Supervisor, Gateway, deployments и consumers"],
     audit:["Audit","Lifecycle, events и consumer integrity"],
@@ -1057,7 +1259,8 @@ function showPage(name) {
   if(name==="tasks") loadTasks();
   if(name==="workflow") loadWorkflow();
   if(name==="events") loadEvents();
-  if(name==="agent") { loadAgent(); loadAIRuntime(); loadRAGDocuments(); }
+  if(name==="agent") { loadAgent(); loadAIRuntime(); }
+  if(name==="documents") loadDocuments();
   if(name==="timesheet") loadTimesheet();
   if(name==="control") loadControlPlane();
   if(name==="audit") loadAudit();
@@ -1071,6 +1274,7 @@ $("#refresh").addEventListener("click",async()=>{
   if(state.activePage==="tasks") await loadTasks();
   if(state.activePage==="workflow") await loadWorkflow();
   if(state.activePage==="events") await loadEvents();
+  if(state.activePage==="documents") await loadDocuments();
   if(state.activePage==="timesheet") await loadTimesheet();
   if(state.activePage==="control") await loadControlPlane();
   if(state.activePage==="audit") await loadAudit();
@@ -1088,7 +1292,19 @@ document.addEventListener("click", event => {
     openTimesheetCell(timesheetCell.dataset.employeeId, timesheetCell.dataset.workDate);
     return;
   }
-  const deploymentButton = event.target.closest("[data-deployment-action]");
+  const documentRow = event.target.closest("[data-document-id]");
+  if (documentRow && (documentRow.classList.contains("document-row") || documentRow.classList.contains("document-relation"))) {
+    openDocument(documentRow.dataset.documentId);
+    return;
+  }
+  const documentTab = event.target.closest("[data-document-tab]");
+  if (documentTab) {
+    const name = documentTab.dataset.documentTab;
+    $(".document-tabs button").forEach(button=>button.classList.toggle("active", button.dataset.documentTab===name));
+    $("[data-document-panel]").forEach(panel=>panel.classList.toggle("active", panel.dataset.documentPanel===name));
+    return;
+  }
+    const deploymentButton = event.target.closest("[data-deployment-action]");
   if (deploymentButton) {
     deploymentAction(deploymentButton.dataset.core, deploymentButton.dataset.deploymentAction);
   }
@@ -1117,9 +1333,16 @@ $("#ai-chat-input").addEventListener("keydown",event=>{
 $("#ai-conversation").addEventListener("change",event=>loadAIConversation(event.target.value));
 $("#ai-memory-save").addEventListener("click",saveAIMemory);
 $("#ai-memory-search").addEventListener("click",searchAIMemory);
-$("#ai-rag-ingest").addEventListener("click",ingestRAGDocument);
-$("#ai-rag-search").addEventListener("click",searchRAGDocuments);
-$("#ai-rag-refresh").addEventListener("click",loadRAGDocuments);
+$("#documents-refresh").addEventListener("click",loadDocuments);
+$("#documents-search-btn").addEventListener("click",loadDocuments);
+$("#documents-search").addEventListener("keydown",event=>{
+  if(event.key==="Enter") loadDocuments();
+});
+$("#documents-type-filter").addEventListener("change",loadDocuments);
+$("#doc-file-ingest").addEventListener("click",ingestDocumentFile);
+$("#doc-text-ingest").addEventListener("click",ingestDocumentText);
+$("#document-reanalyze").addEventListener("click",reanalyzeDocument);
+$("#document-archive").addEventListener("click",archiveDocument);
 $("#control-refresh").addEventListener("click",loadControlPlane);
 $("#workflow-refresh").addEventListener("click",loadWorkflow);
 $("#workflow-select").addEventListener("change",event=>{
