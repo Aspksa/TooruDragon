@@ -228,7 +228,7 @@ class GarageFuelTests(unittest.TestCase):
         self.assertEqual(document["document_type"], "fuel_statement")
         self.assertEqual(document["archive_path"], "Выписки ГСМ/2026/06")
         self.assertEqual(document["document_date"], "2026-06-01")
-        self.assertIsNone(document["document_number"])
+        self.assertEqual(document["document_number"], "")
 
         statement = self.garage.import_fuel_statement(
             document_id=document["id"],
