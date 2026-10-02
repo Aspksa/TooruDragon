@@ -6,6 +6,7 @@ from uuid import uuid4
 from .ai_memory import AIMemoryStore
 from .model_router import ModelProviderError, ModelRouter
 from .rag import RAGIndex
+from .reasoning import HybridReasoningEngine, ReasoningConfig
 
 
 @dataclass(frozen=True)
@@ -15,6 +16,10 @@ class ChatConfig:
     retrieval_limit: int = 6
     rag_limit: int = 6
     memory_scope: str = "global"
+    reasoning_mode: str = "auto"
+    reasoning_tree_threshold: int = 4
+    reasoning_max_branches: int = 3
+    reasoning_branch_max_tokens: int = 512
 
 
 class ChatRuntime:
@@ -29,6 +34,14 @@ class ChatRuntime:
         self.memory = memory
         self.config = config
         self.rag = rag
+        self.reasoning = HybridReasoningEngine(
+            ReasoningConfig(
+                mode=config.reasoning_mode,
+                tree_threshold=config.reasoning_tree_threshold,
+                max_branches=config.reasoning_max_branches,
+                branch_max_tokens=config.reasoning_branch_max_tokens,
+            )
+        )
 
     def chat(
         self,
@@ -108,8 +121,12 @@ class ChatRuntime:
 
         messages.append({"role": "user", "content": message})
 
-        result = self.router.chat(
+        result, reasoning = self.reasoning.run(
+            self.router,
             messages,
+            user_message=message,
+            evidence_count=len(memories) + len(rag_chunks),
+            history_count=len(history),
             provider=provider,
             model=model,
             temperature=temperature,
@@ -126,11 +143,13 @@ class ChatRuntime:
             user_metadata={
                 "retrieved_memory_ids": [item["id"] for item in memories],
                 "retrieved_rag_chunk_ids": [item["id"] for item in rag_chunks],
+                "reasoning_mode": reasoning["mode"],
             },
             assistant_metadata={
                 "finish_reason": result.get("finish_reason"),
                 "usage": result.get("usage"),
                 "raw_id": result.get("raw_id"),
+                "reasoning": reasoning,
             },
         )
 
@@ -142,6 +161,7 @@ class ChatRuntime:
             "content": result["content"],
             "finish_reason": result.get("finish_reason"),
             "usage": result.get("usage"),
+            "reasoning": reasoning,
             "retrieved_memories": memories,
             "retrieved_rag": rag_chunks,
             "messages": exchange,
@@ -191,4 +211,5 @@ class ChatRuntime:
                 "enabled": self.rag is not None,
                 "limit": self.config.rag_limit,
             },
+            "reasoning": self.reasoning.status(),
         }
