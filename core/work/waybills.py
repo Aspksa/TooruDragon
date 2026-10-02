@@ -476,7 +476,9 @@ class WaybillAutomationService:
             for waybill_id in waybill_ids:
                 self._recalculate_waybill(waybill_id)
                 self._build_overtime_candidate(waybill_id)
-                self._write_memory_and_graph(waybill_id)
+                current_waybill = self.waybill(waybill_id)
+                if not current_waybill["needs_review"]:
+                    self._write_memory_and_graph(waybill_id)
 
             self._set_batch(
                 batch_id,
@@ -548,7 +550,7 @@ class WaybillAutomationService:
             (batch_id,),
         )
         batch = self.batch(batch_id)
-        if cached and int(batch.get("page_count") or 0) == len(cached):
+        if cached:
             return [
                 OCRPage(
                     page_number=int(item["page_number"]),
@@ -2342,6 +2344,8 @@ class WaybillAutomationService:
             source="waybill_review",
             source_document_id=waybill_id,
         )
+        self._build_overtime_candidate(waybill_id)
+        self._write_memory_and_graph(waybill_id)
         return self.waybill(waybill_id)
 
     # ------------------------------------------------------------- data access
