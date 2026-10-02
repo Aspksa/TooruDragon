@@ -732,6 +732,25 @@ class DocumentIntelligenceService:
             "edges": edges,
         }
 
+    def record_issue(
+        self,
+        document_id: str,
+        issue_type: str,
+        severity: str,
+        message: str,
+        details: dict | None = None,
+    ) -> dict:
+        self.document(document_id, include_text=False)
+        self._add_issue(
+            document_id,
+            issue_type,
+            severity,
+            message,
+            details or {},
+        )
+        self._sync_status(document_id)
+        return self.document(document_id, include_text=False)
+
     def record_ingest_event(
         self,
         *,
