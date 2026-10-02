@@ -37,6 +37,11 @@ REFERENCE_RE = re.compile(
     r"\s*(?:№|N|номер)?\s*([A-ZА-ЯЁ0-9][A-ZА-ЯЁ0-9./_-]{0,40})",
     re.IGNORECASE,
 )
+CONTRACT_REFERENCE_RE = re.compile(
+    r"\b(?:договор|контракт)\s*(?:№|N|номер)?\s*"
+    r"([A-ZА-ЯЁ0-9][A-ZА-ЯЁ0-9./_-]{0,40})",
+    re.IGNORECASE,
+)
 WORD_RE = re.compile(r"[A-Za-zА-Яа-яЁё0-9_]+", re.UNICODE)
 QUANTITY_RE = re.compile(
     r"(?<!\d)(\d+(?:[.,]\d+)?)\s*(шт\.?|ед\.?|компл\.?|л\.?|кг\.?|м\.?)(?!\w)",
@@ -1459,7 +1464,7 @@ class DocumentIntelligenceService:
                     )
 
     def _cross_document_checks(self, document_id: str) -> None:
-        doc = self.document(document_id, include_text=False)
+        doc = self.document(document_id, include_text=True)
         facts = doc.get("facts", [])
         plates = {
             item["normalized_value"]
@@ -1507,6 +1512,69 @@ class DocumentIntelligenceService:
                         },
                     )
 
+        checked_contracts: set[str] = set()
+        contract_refs = {
+            _normalized_value(match.group(1))
+            for match in CONTRACT_REFERENCE_RE.finditer(doc.get("text_content") or "")
+        }
+        if contract_refs:
+            candidates = self.db.query(
+                """
+                SELECT id, title, document_number, document_date
+                FROM work_documents
+                WHERE document_type='contract'
+                  AND id!=?
+                  AND archived=0
+                  AND document_number!=''
+                """,
+                (document_id,),
+            )
+            current_suppliers = {
+                item["normalized_value"]
+                for item in facts
+                if item["fact_type"] == "party"
+                and item["fact_key"] in {"supplier", "counterparty"}
+            }
+            for candidate in candidates:
+                if _normalized_value(candidate["document_number"]) not in contract_refs:
+                    continue
+                checked_contracts.add(candidate["id"])
+                self._upsert_relation(
+                    document_id,
+                    candidate["id"],
+                    "references",
+                    1.0,
+                    {
+                        "document_number": candidate["document_number"],
+                        "reference_key": "contract",
+                        "source": "deterministic_contract_reference",
+                    },
+                )
+                target_facts = self.facts(candidate["id"])
+                target_suppliers = {
+                    item["normalized_value"]
+                    for item in target_facts
+                    if item["fact_type"] == "party"
+                    and item["fact_key"] in {"supplier", "counterparty"}
+                }
+                if (
+                    current_suppliers
+                    and target_suppliers
+                    and current_suppliers.isdisjoint(target_suppliers)
+                ):
+                    self._add_issue(
+                        document_id,
+                        "counterparty_conflict",
+                        "error",
+                        "Контрагент в документе отличается от контрагента связанного договора.",
+                        {
+                            "current": sorted(current_suppliers),
+                            "contract": sorted(target_suppliers),
+                            "contract_document_id": candidate["id"],
+                            "contract_number": candidate["document_number"],
+                        },
+                    )
+
         for relation in self.relations(document_id):
             if relation["relation_type"] != "references":
                 continue
@@ -1531,34 +1599,6 @@ class DocumentIntelligenceService:
                     },
                 )
 
-            current_suppliers = {
-                item["normalized_value"]
-                for item in facts
-                if item["fact_type"] == "party"
-                and item["fact_key"] in {"supplier", "counterparty"}
-            }
-            target_suppliers = {
-                item["normalized_value"]
-                for item in target.get("facts", [])
-                if item["fact_type"] == "party"
-                and item["fact_key"] in {"supplier", "counterparty"}
-            }
-            if (
-                current_suppliers
-                and target_suppliers
-                and current_suppliers.isdisjoint(target_suppliers)
-            ):
-                self._add_issue(
-                    document_id,
-                    "counterparty_conflict",
-                    "error",
-                    "Контрагент в документе отличается от контрагента связанного договора.",
-                    {
-                        "current": sorted(current_suppliers),
-                        "contract": sorted(target_suppliers),
-                        "contract_document_id": target["id"],
-                    },
-                )
 
     def _compare_versions(self, document_id: str, previous_id: str) -> None:
         current = self.document(document_id, include_text=False)
