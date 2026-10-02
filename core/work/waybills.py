@@ -5,6 +5,7 @@ import calendar
 import hashlib
 import io
 import json
+import logging
 import re
 import shutil
 import threading
@@ -28,6 +29,9 @@ from core.work.waybill_extract import (
     split_waybill_pages,
 )
 from core.work.waybill_ocr import OCRPage, OCRService, OCRUnavailableError
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 BATCH_STAGES = (
@@ -3415,6 +3419,7 @@ class WaybillBatchWorker:
         self.poll_seconds = max(0.2, float(poll_seconds))
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self.last_error: str | None = None
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -3453,13 +3458,49 @@ class WaybillBatchWorker:
                     },
                 )
             except Exception as exc:
+                error_message = f"{type(exc).__name__}: {exc}"
+                self.last_error = error_message
+                LOGGER.exception(
+                    "Waybill batch task %s failed: %s",
+                    task.get("id"),
+                    error_message,
+                )
                 try:
                     self.service.workflow.fail(
                         task["id"],
                         self.worker_id,
-                        f"{type(exc).__name__}: {exc}",
+                        error_message,
                         retry_delay_seconds=5,
                     )
-                except Exception:
-                    pass
+                except Exception as fail_exc:
+                    fallback = (
+                        f"{error_message}; workflow_fail_error="
+                        f"{type(fail_exc).__name__}: {fail_exc}"
+                    )
+                    self.last_error = fallback
+                    LOGGER.exception(
+                        "Unable to persist failed workflow state for task %s",
+                        task.get("id"),
+                    )
+                    batch_id = str(
+                        (task.get("payload") or {}).get("batch_id") or ""
+                    )
+                    if batch_id:
+                        try:
+                            self.service._set_batch(
+                                batch_id,
+                                status="failed",
+                                error=fallback,
+                                progress={
+                                    "message": "Обработка завершилась ошибкой",
+                                    "worker_error": fallback,
+                                },
+                            )
+                        except Exception:
+                            LOGGER.exception(
+                                "Unable to persist fallback batch error for %s",
+                                batch_id,
+                            )
+            else:
+                self.last_error = None
             self._stop.wait(0.05)
