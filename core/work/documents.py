@@ -249,7 +249,7 @@ class DocumentIntelligenceService:
             forced_type=str(payload.get("document_type") or "").strip(),
         )
         facts = self._extract_facts(text)
-        document_number = self._first_fact(facts, "document_number")
+        document_number = self._document_number(document_type, facts)
         document_date = self._document_date(document_type, facts)
         year = int(document_date[:4]) if document_date else self._infer_year(facts, text)
 
@@ -398,7 +398,7 @@ class DocumentIntelligenceService:
         text = current["text_content"]
         document_type = self._classify(current["title"], text)
         facts = self._extract_facts(text)
-        document_number = self._first_fact(facts, "document_number")
+        document_number = self._document_number(document_type, facts)
         document_date = self._document_date(document_type, facts)
         year = int(document_date[:4]) if document_date else self._infer_year(facts, text)
         archive_path = self._archive_path(
@@ -1801,6 +1801,15 @@ class DocumentIntelligenceService:
                 json.dumps(details, ensure_ascii=False),
                 _now(),
             ),
+        )
+
+    @staticmethod
+    def _document_number(document_type: str, facts: list[dict]) -> str | None:
+        if document_type == "fuel_statement":
+            return None
+        return DocumentIntelligenceService._first_fact(
+            facts,
+            "document_number",
         )
 
     @staticmethod
