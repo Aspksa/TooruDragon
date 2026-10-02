@@ -38,6 +38,23 @@ REFERENCE_RE = re.compile(
     re.IGNORECASE,
 )
 WORD_RE = re.compile(r"[A-Za-zА-Яа-яЁё0-9_]+", re.UNICODE)
+QUANTITY_RE = re.compile(
+    r"(?<!\d)(\d+(?:[.,]\d+)?)\s*(шт\.?|ед\.?|компл\.?|л\.?|кг\.?|м\.?)(?!\w)",
+    re.IGNORECASE,
+)
+VAT_RE = re.compile(
+    r"\bНДС\b\s*(?:(\d{1,2}(?:[.,]\d+)?)\s*%)?",
+    re.IGNORECASE,
+)
+LABEL_PATTERNS = {
+    "organization": re.compile(r"(?im)^\s*(?:организация|общество|компания)\s*[:\-]\s*(.+?)\s*$"),
+    "department": re.compile(r"(?im)^\s*(?:подразделение|отдел|служба)\s*[:\-]\s*(.+?)\s*$"),
+    "author": re.compile(r"(?im)^\s*(?:от кого|автор)\s*[:\-]\s*(.+?)\s*$"),
+    "addressee": re.compile(r"(?im)^\s*(?:кому|адресат)\s*[:\-]\s*(.+?)\s*$"),
+    "subject": re.compile(r"(?im)^\s*(?:тема|о чем|о чём)\s*[:\-]\s*(.+?)\s*$"),
+    "supplier": re.compile(r"(?im)^\s*(?:поставщик|продавец)\s*[:\-]\s*(.+?)\s*$"),
+    "counterparty": re.compile(r"(?im)^\s*(?:контрагент|заказчик|исполнитель)\s*[:\-]\s*(.+?)\s*$"),
+}
 
 
 DOCUMENT_TYPES = {
@@ -907,6 +924,52 @@ class DocumentIntelligenceService:
                 0.82,
             )
 
+        for key, pattern in LABEL_PATTERNS.items():
+            for match in pattern.finditer(text):
+                add(
+                    "party" if key in {"organization", "author", "addressee", "supplier", "counterparty"} else "document",
+                    key,
+                    match.group(1).strip(),
+                    match.start(1),
+                    match.end(1),
+                    0.84,
+                )
+
+        for match in QUANTITY_RE.finditer(text):
+            add(
+                "quantity",
+                "quantity",
+                f"{match.group(1)} {match.group(2)}",
+                match.start(),
+                match.end(),
+                0.8,
+            )
+
+        for match in VAT_RE.finditer(text):
+            value = f"{match.group(1)}%" if match.group(1) else "НДС"
+            add(
+                "tax",
+                "vat",
+                value,
+                match.start(),
+                match.end(),
+                0.82,
+            )
+
+        request_match = re.search(
+            r"(?im)(?:^|[.!?]\s+)(прошу\b[^\n.!?]*(?:[.!?]|$))",
+            text,
+        )
+        if request_match:
+            add(
+                "action",
+                "requested_action",
+                request_match.group(1).strip(),
+                request_match.start(1),
+                request_match.end(1),
+                0.83,
+            )
+
         return facts
 
     def _resolve_family(
@@ -1161,6 +1224,35 @@ class DocumentIntelligenceService:
                     },
                 )
 
+            current_suppliers = {
+                item["normalized_value"]
+                for item in facts
+                if item["fact_type"] == "party"
+                and item["fact_key"] in {"supplier", "counterparty"}
+            }
+            target_suppliers = {
+                item["normalized_value"]
+                for item in target.get("facts", [])
+                if item["fact_type"] == "party"
+                and item["fact_key"] in {"supplier", "counterparty"}
+            }
+            if (
+                current_suppliers
+                and target_suppliers
+                and current_suppliers.isdisjoint(target_suppliers)
+            ):
+                self._add_issue(
+                    document_id,
+                    "counterparty_conflict",
+                    "error",
+                    "Контрагент в документе отличается от контрагента связанного договора.",
+                    {
+                        "current": sorted(current_suppliers),
+                        "contract": sorted(target_suppliers),
+                        "contract_document_id": target["id"],
+                    },
+                )
+
     def _compare_versions(self, document_id: str, previous_id: str) -> None:
         current = self.document(document_id, include_text=False)
         previous = self.document(previous_id, include_text=False)
@@ -1349,12 +1441,20 @@ class DocumentIntelligenceService:
         structure: dict,
         facts: list[dict],
     ) -> dict:
+        fact_material = [
+            (fact["type"], fact["key"], fact["normalized"])
+            for fact in facts
+        ]
+        fact_fingerprint = _sha256(
+            json.dumps(sorted(fact_material), ensure_ascii=False)
+        )
         return {
-            "version": "1.0",
+            "version": "1.1",
             "document_type": document_type,
             "content_sha256": content_hash,
             "normalized_sha256": normalized_hash,
             "structure_sha256": structure_hash,
+            "fact_fingerprint": fact_fingerprint,
             "structure": structure,
             "identifiers": {
                 "dates": [f["value"] for f in facts if f["type"] == "date"],
@@ -1377,4 +1477,6 @@ class DocumentIntelligenceService:
         item["dna"] = json.loads(item.pop("dna_json") or "{}")
         item["metadata"] = json.loads(item.pop("metadata_json") or "{}")
         item["archived"] = bool(item["archived"])
+        item["passport"]["status"] = item.get("status")
+        item["passport"]["archived"] = item["archived"]
         return item
