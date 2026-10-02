@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import base64
 import hashlib
+import io
 import json
 import re
+import zipfile
 from collections import Counter
+from pathlib import Path
+from xml.etree import ElementTree
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -103,6 +108,43 @@ class DocumentIntelligenceService:
     def __init__(self, database: Database, rag: RAGIndex | None = None):
         self.db = database
         self.rag = rag or RAGIndex(database)
+
+    def ingest_file(self, payload: dict) -> dict:
+        filename = str(payload.get("filename") or "").strip()
+        encoded = str(payload.get("content_base64") or "").strip()
+        if not filename:
+            raise ValueError("filename is required")
+        if not encoded:
+            raise ValueError("content_base64 is required")
+        try:
+            raw = base64.b64decode(encoded, validate=True)
+        except Exception as exc:
+            raise ValueError("invalid base64 file content") from exc
+
+        if len(raw) > 12_000_000:
+            raise ValueError("file is larger than 12 MB")
+
+        text, parser = self._extract_file_text(filename, raw)
+        metadata = payload.get("metadata") if isinstance(payload.get("metadata"), dict) else {}
+        metadata = {
+            **metadata,
+            "file": {
+                "filename": filename,
+                "size_bytes": len(raw),
+                "sha256": hashlib.sha256(raw).hexdigest(),
+                "parser": parser,
+            },
+        }
+        return self.ingest({
+            "text": text,
+            "title": payload.get("title") or Path(filename).stem,
+            "original_name": filename,
+            "source": payload.get("source") or "file_upload",
+            "source_path": payload.get("source_path") or "",
+            "document_type": payload.get("document_type") or "",
+            "family_id": payload.get("family_id") or "",
+            "metadata": metadata,
+        })
 
     def ingest(self, payload: dict) -> dict:
         text = _normalize_text(payload.get("text", ""))
@@ -615,6 +657,111 @@ class DocumentIntelligenceService:
             "types": types,
             "open_issues": {row["severity"]: row["count"] for row in issues},
         }
+
+    @staticmethod
+    def _extract_file_text(filename: str, raw: bytes) -> tuple[str, str]:
+        suffix = Path(filename).suffix.lower()
+
+        if suffix in {".txt", ".md", ".csv", ".json", ".log"}:
+            for encoding in ("utf-8-sig", "utf-8", "cp1251"):
+                try:
+                    return raw.decode(encoding), f"text:{encoding}"
+                except UnicodeDecodeError:
+                    continue
+            raise ValueError("text file encoding is not supported")
+
+        if suffix == ".docx":
+            try:
+                with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+                    xml = archive.read("word/document.xml")
+            except (zipfile.BadZipFile, KeyError) as exc:
+                raise ValueError("invalid DOCX file") from exc
+            root = ElementTree.fromstring(xml)
+            ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+            paragraphs = []
+            for paragraph in root.findall(".//w:p", ns):
+                parts = [
+                    node.text or ""
+                    for node in paragraph.findall(".//w:t", ns)
+                ]
+                line = "".join(parts).strip()
+                if line:
+                    paragraphs.append(line)
+            text = "\n".join(paragraphs).strip()
+            if not text:
+                raise ValueError("DOCX contains no extractable text")
+            return text, "builtin_docx_xml"
+
+        if suffix == ".xlsx":
+            try:
+                with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+                    shared = []
+                    if "xl/sharedStrings.xml" in archive.namelist():
+                        root = ElementTree.fromstring(archive.read("xl/sharedStrings.xml"))
+                        ns = {"x": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+                        for item in root.findall(".//x:si", ns):
+                            shared.append("".join(
+                                node.text or ""
+                                for node in item.findall(".//x:t", ns)
+                            ))
+                    lines = []
+                    sheet_names = sorted(
+                        name for name in archive.namelist()
+                        if name.startswith("xl/worksheets/sheet") and name.endswith(".xml")
+                    )
+                    ns = {"x": "http://schemas.openxmlformats.org/spreadsheetml/2006/main"}
+                    for sheet_name in sheet_names:
+                        root = ElementTree.fromstring(archive.read(sheet_name))
+                        lines.append(f"[{sheet_name}]")
+                        for row in root.findall(".//x:row", ns):
+                            values = []
+                            for cell in row.findall("x:c", ns):
+                                value_node = cell.find("x:v", ns)
+                                value = value_node.text if value_node is not None else ""
+                                if cell.get("t") == "s" and value.isdigit():
+                                    index = int(value)
+                                    if 0 <= index < len(shared):
+                                        value = shared[index]
+                                values.append(value)
+                            if any(str(value).strip() for value in values):
+                                lines.append("\t".join(str(value) for value in values))
+            except (zipfile.BadZipFile, ElementTree.ParseError) as exc:
+                raise ValueError("invalid XLSX file") from exc
+            text = "\n".join(lines).strip()
+            if not text:
+                raise ValueError("XLSX contains no extractable cells")
+            return text, "builtin_xlsx_xml"
+
+        if suffix == ".pdf":
+            try:
+                from pypdf import PdfReader
+            except ImportError as exc:
+                raise ValueError(
+                    "PDF parser is unavailable: install pypdf"
+                ) from exc
+            try:
+                reader = PdfReader(io.BytesIO(raw))
+                pages = [
+                    page.extract_text() or ""
+                    for page in reader.pages
+                ]
+            except Exception as exc:
+                raise ValueError("PDF text extraction failed") from exc
+            text = "\n\n".join(pages).strip()
+            if not text:
+                raise ValueError(
+                    "PDF contains no extractable text; scanned PDF requires OCR"
+                )
+            return text, "pypdf"
+
+        if suffix == ".doc":
+            raise ValueError(
+                "legacy .DOC is not safely parsed yet; convert it to DOCX or add a legacy DOC adapter"
+            )
+
+        raise ValueError(
+            f"unsupported file type: {suffix or 'without extension'}"
+        )
 
     def _classify(self, title: str, text: str, forced_type: str = "") -> str:
         if forced_type:
