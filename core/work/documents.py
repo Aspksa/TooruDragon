@@ -152,7 +152,7 @@ class DocumentIntelligenceService:
                 "parser": parser,
             },
         }
-        return self.ingest({
+        item = self.ingest({
             "text": text,
             "title": payload.get("title") or Path(filename).stem,
             "original_name": filename,
@@ -162,6 +162,40 @@ class DocumentIntelligenceService:
             "family_id": payload.get("family_id") or "",
             "metadata": metadata,
         })
+        if item.get("duplicate"):
+            return item
+
+        try:
+            stored_path = self._preserve_original(item, filename, raw)
+            metadata["file"]["stored_path"] = stored_path
+            passport = dict(item.get("passport") or {})
+            passport["original_preserved"] = True
+            passport["original_storage"] = stored_path
+            self.db.execute(
+                """
+                UPDATE work_documents
+                SET source_path=?, metadata_json=?, passport_json=?, updated_at=?
+                WHERE id=?
+                """,
+                (
+                    stored_path,
+                    json.dumps(metadata, ensure_ascii=False),
+                    json.dumps(passport, ensure_ascii=False),
+                    _now(),
+                    item["id"],
+                ),
+            )
+        except OSError as exc:
+            self._add_issue(
+                item["id"],
+                "original_file_preservation_failed",
+                "error",
+                "Оригинал файла не удалось сохранить на диске проекта.",
+                {"error_type": type(exc).__name__, "message": str(exc)},
+            )
+            self._sync_status(item["id"])
+
+        return self.document(item["id"])
 
     def ingest(self, payload: dict) -> dict:
         text = _normalize_text(payload.get("text", ""))
@@ -688,6 +722,26 @@ class DocumentIntelligenceService:
             "types": types,
             "open_issues": {row["severity"]: row["count"] for row in issues},
         }
+
+    def _preserve_original(self, item: dict, filename: str, raw: bytes) -> str:
+        safe_name = re.sub(
+            r"[^A-Za-zА-Яа-яЁё0-9._()\- ]+",
+            "_",
+            Path(filename).name,
+        ).strip(" .") or "document.bin"
+        relative = (
+            Path("documents")
+            / Path(item["archive_path"])
+            / item["family_id"]
+            / f"v{item['version']}"
+            / safe_name
+        )
+        target = self.db.path.parent / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temporary = target.with_suffix(target.suffix + ".tmp")
+        temporary.write_bytes(raw)
+        temporary.replace(target)
+        return relative.as_posix()
 
     @staticmethod
     def _extract_file_text(filename: str, raw: bytes) -> tuple[str, str]:
