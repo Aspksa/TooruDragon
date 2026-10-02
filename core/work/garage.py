@@ -914,6 +914,7 @@ class GarageFuelService:
                 ROUND(COALESCE(SUM(deviation_l), 0), 4) AS deviation_l
             FROM garage_waybills
             WHERE trip_date BETWEEN ? AND ?
+              AND COALESCE(needs_review, 0)=0
             """,
             (start, end),
         )[0]
@@ -941,6 +942,7 @@ class GarageFuelService:
                    COUNT(*) AS waybills
             FROM garage_waybills w
             WHERE w.trip_date BETWEEN ? AND ?
+              AND COALESCE(w.needs_review, 0)=0
               AND w.vehicle_id IS NOT NULL
               AND w.employee_id IS NOT NULL
             GROUP BY w.vehicle_id, w.employee_id
