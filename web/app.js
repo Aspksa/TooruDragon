@@ -963,6 +963,9 @@ function renderWaybillBatches(items) {
         '<span>'+escapeHtml(item.errors_count || 0)+' ошибок</span>'+
       '</div>'+
       '<div class="subtitle">'+escapeHtml(item.progress?.message || item.error || "")+'</div>'+
+      (item.progress?.possible_version_of
+        ? '<div class="waybill-version-hint">⚠ '+escapeHtml(item.progress?.version_message || "Возможно, это новая версия ранее загруженной пачки.")+'</div>'
+        : '')+
       (item.status==="completed"
         ? '<div class="waybill-batch-summary">'+
             '<span>Авто: '+escapeHtml(summary.vehicles ?? "—")+'</span>'+
