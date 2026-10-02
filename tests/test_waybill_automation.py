@@ -567,6 +567,28 @@ class WaybillAutomationTests(unittest.TestCase):
                 ),
             )
         ])
+        statement_document = self.documents.ingest({
+            "title": "Выписка ГСМ сентябрь 2026",
+            "text": "Выписка ГСМ за период 01.09.2026 - 30.09.2026",
+            "document_type": "fuel_statement",
+            "source": "test",
+        })
+        self.db.execute(
+            """
+            INSERT INTO garage_fuel_statements(
+                id, document_id, original_name, period_start, period_end,
+                card_count, transaction_count, total_liters, total_amount,
+                parser, created_at, updated_at
+            )
+            VALUES(
+                'statement-1', ?, 'statement.xls', '2026-09-01', '2026-09-30',
+                1, 1, 80, 5600, 'test',
+                '2026-09-01T00:00:00+00:00',
+                '2026-09-01T00:00:00+00:00'
+            )
+            """,
+            (statement_document["id"],),
+        )
         self.db.execute(
             """
             INSERT INTO garage_fuel_transactions(
@@ -577,18 +599,20 @@ class WaybillAutomationTests(unittest.TestCase):
                 amount, resolution_status, created_at, updated_at
             )
             VALUES(
-                'tx-1', 'statement-1', 'statement-doc-1', 1,
+                'tx-1', 'statement-1', ?, 1,
                 ?, 'ИВАНОВ', ?, ?, 'Отгрузка', '2026-09-21',
                 '10:00', 'АЗС', 'АИ-95', 'gasoline_95', 70, 80,
                 5600, 'linked', '2026-09-21T00:00:00+00:00',
                 '2026-09-21T00:00:00+00:00'
             )
             """,
-            (CARD_1, self.employee1["id"], self.vehicle1["id"]),
+            (
+                statement_document["id"],
+                CARD_1,
+                self.employee1["id"],
+                self.vehicle1["id"],
+            ),
         )
-        # Minimal parent rows required by foreign keys are not enforced by the
-        # test connection by default, but the transaction still exercises the
-        # real reconciliation queries.
         batch = service.upload_bytes(filename="fuel.pdf", raw=b"fuel")
         service.process_batch(batch["id"])
         item = service.waybills(batch_id=batch["id"])[0]
