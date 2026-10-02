@@ -210,6 +210,14 @@ def _build_machine_report(fetcher=None) -> dict:
             "work",
             f"/timesheet/summary?month={datetime.now(timezone.utc).strftime('%Y-%m')}",
         ),
+        "work.timesheet_overtime": (
+            "work",
+            f"/timesheet/overtime?month={datetime.now(timezone.utc).strftime('%Y-%m')}",
+        ),
+        "work.timesheet_custom_columns": (
+            "work",
+            "/timesheet/custom-columns",
+        ),
         "supervisor.health": ("supervisor", "/health"),
         "supervisor.status": ("supervisor", "/status"),
         "supervisor.deployments": ("supervisor", "/deployments"),
