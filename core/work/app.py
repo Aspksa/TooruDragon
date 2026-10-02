@@ -173,7 +173,7 @@ def document_file_ingest(request):
         document_id=item["id"],
     )
     fuel_import = None
-    if item["document_type"] == "fuel_statement" and not item.get("duplicate"):
+    if item["document_type"] == "fuel_statement":
         try:
             fuel_import = {
                 "ok": True,
