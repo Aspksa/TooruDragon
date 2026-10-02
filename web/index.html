@@ -29,6 +29,7 @@
   <symbol id="i-card" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18M7 15h4"/></symbol>
   <symbol id="i-car" viewBox="0 0 24 24"><path d="m5 11 2-5h10l2 5"/><rect x="3" y="10" width="18" height="8" rx="2"/><circle cx="7" cy="18" r="1.5"/><circle cx="17" cy="18" r="1.5"/></symbol>
   <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-archive" viewBox="0 0 24 24"><path d="M4 7h16v13H4z"/><path d="M3 4h18v3H3z"/><path d="M9 11h6"/></symbol>
 </svg>
 <div class="app">
   <aside class="sidebar" id="sidebar">
@@ -83,9 +84,9 @@
           <div class="hero-title">Всё важное — в одном спокойном интерфейсе.</div>
           <div class="hero-copy">Документы, путевые листы, ГСМ, автомобили и табель связаны между собой. Тоору остаётся рядом и показывает только то, что действительно требует внимания.</div>
           <div class="hero-actions">
-            <button class="btn primary" data-open-page="agent">✦ Открыть Тоору</button>
-            <button class="btn" data-open-page="documents">▤ Документы</button>
-            <button class="btn" data-open-page="garage">▣ Гараж · ГСМ</button>
+            <button class="btn primary" data-open-page="agent"><svg class="ui-icon"><use href="#i-spark"></use></svg>Открыть Тоору</button>
+            <button class="btn" data-open-page="documents"><svg class="ui-icon"><use href="#i-document"></use></svg>Документы</button>
+            <button class="btn" data-open-page="garage"><svg class="ui-icon"><use href="#i-garage"></use></svg>Гараж · ГСМ</button>
           </div>
         </div>
         <div class="hero-card health-score">
@@ -134,7 +135,7 @@
     <section class="page" data-page="tasks">
       <div class="two-col">
         <div>
-          <div class="section-head"><h3>Durable Tasks</h3><button class="btn" id="tasks-refresh">↻</button></div>
+          <div class="section-head"><h3>Durable Tasks</h3><button class="btn icon-btn" id="tasks-refresh" aria-label="Обновить задачи" title="Обновить"><svg class="ui-icon"><use href="#i-refresh"></use></svg></button></div>
           <div class="table-wrap"><table>
             <thead><tr><th>ID</th><th>Kind</th><th>State</th><th>Priority</th><th>Attempts</th><th>Workflow</th><th>Created</th></tr></thead>
             <tbody id="tasks-body"></tbody>
@@ -161,7 +162,7 @@
         <h3>Workflow Graph</h3>
         <div class="actions">
           <select id="workflow-select" class="compact-select"></select>
-          <button class="btn" id="workflow-refresh">↻ Обновить</button>
+          <button class="btn" id="workflow-refresh"><svg class="ui-icon"><use href="#i-refresh"></use></svg>Обновить</button>
         </div>
       </div>
       <div class="card panel workflow-canvas-wrap">
@@ -181,7 +182,7 @@
 
     <section class="page" data-page="events">
       <div class="card panel">
-        <div class="section-head"><h3>Durable Event Fabric</h3><div class="actions"><span class="status-pill" id="live-stream-badge">LIVE CONNECTING</span><button class="btn" id="events-refresh">↻</button></div></div>
+        <div class="section-head"><h3>Durable Event Fabric</h3><div class="actions"><span class="status-pill" id="live-stream-badge">LIVE CONNECTING</span><button class="btn icon-btn" id="events-refresh" aria-label="Обновить события" title="Обновить"><svg class="ui-icon"><use href="#i-refresh"></use></svg></button></div></div>
         <ul class="log" id="event-log"></ul>
       </div>
     </section>
@@ -246,7 +247,7 @@
         <div class="actions">
           <input id="documents-search" class="compact-input" placeholder="Поиск по документам">
           <button class="btn" id="documents-search-btn"><svg class="ui-icon"><use href="#i-search"></use></svg>Найти</button>
-          <button class="btn" id="documents-refresh">↻ Обновить</button>
+          <button class="btn" id="documents-refresh"><svg class="ui-icon"><use href="#i-refresh"></use></svg>Обновить</button>
         </div>
       </div>
 
@@ -372,8 +373,8 @@
                 <div class="subtitle" id="document-meta"></div>
               </div>
               <div class="actions">
-                <button class="btn" id="document-reanalyze">↻ Переизучить</button>
-                <button class="btn danger" id="document-archive">В архив</button>
+                <button class="btn" id="document-reanalyze"><svg class="ui-icon"><use href="#i-refresh"></use></svg>Переизучить</button>
+                <button class="btn danger" id="document-archive"><svg class="ui-icon"><use href="#i-archive"></use></svg>В архив</button>
               </div>
             </div>
 
@@ -411,8 +412,8 @@
         </div>
         <div class="actions">
           <input id="garage-month" type="month" class="compact-input">
-          <button class="btn" id="garage-reconcile">⟳ Пересвязать</button>
-          <button class="btn" id="garage-refresh">↻ Обновить</button>
+          <button class="btn" id="garage-reconcile"><svg class="ui-icon"><use href="#i-link"></use></svg>Пересвязать</button>
+          <button class="btn" id="garage-refresh"><svg class="ui-icon"><use href="#i-refresh"></use></svg>Обновить</button>
         </div>
       </div>
 
@@ -529,7 +530,7 @@
         </div>
         <div class="actions">
           <input id="timesheet-month" type="month" class="compact-input">
-          <button class="btn" id="timesheet-refresh">↻ Обновить</button>
+          <button class="btn" id="timesheet-refresh"><svg class="ui-icon"><use href="#i-refresh"></use></svg>Обновить</button>
         </div>
       </div>
 
@@ -687,7 +688,7 @@
         <tbody id="deployments-body"></tbody>
       </table></div>
       <div class="section card panel">
-        <div class="section-head"><h3>Control Plane snapshot</h3><button class="btn" id="control-refresh">↻</button></div>
+        <div class="section-head"><h3>Control Plane snapshot</h3><button class="btn icon-btn" id="control-refresh" aria-label="Обновить систему" title="Обновить"><svg class="ui-icon"><use href="#i-refresh"></use></svg></button></div>
         <pre class="json" id="control-json">Загрузка...</pre>
       </div>
     </section>
@@ -711,7 +712,7 @@
       </div>
       <div class="section two-col">
         <div class="card panel">
-          <div class="section-head"><h3>Core lifecycle audit</h3><button class="btn" id="audit-refresh">↻</button></div>
+          <div class="section-head"><h3>Core lifecycle audit</h3><button class="btn icon-btn" id="audit-refresh" aria-label="Обновить аудит" title="Обновить"><svg class="ui-icon"><use href="#i-refresh"></use></svg></button></div>
           <div class="table-wrap"><table>
             <thead><tr><th>Time</th><th>Core</th><th>Action</th><th>OK</th><th>Message</th></tr></thead>
             <tbody id="audit-core-body"></tbody>
@@ -731,7 +732,7 @@
 <button class="tooru-dock" id="tooru-dock" data-open-page="agent" aria-label="Открыть Тоору">
   <span class="tooru-dock-avatar">🐉</span>
   <span class="tooru-dock-copy"><strong>Тоору</strong><small>Всегда рядом</small></span>
-  <span class="tooru-dock-arrow">✦</span>
+  <span class="tooru-dock-arrow"><svg class="ui-icon"><use href="#i-spark"></use></svg></span>
 </button>
 <div class="toast" id="toast"></div>
 <script src="/app.js?v=ui-system-20261002"></script>
