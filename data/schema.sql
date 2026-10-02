@@ -440,3 +440,147 @@ ON work_document_ingest_log(created_at DESC);
 
 CREATE INDEX IF NOT EXISTS idx_work_document_ingest_log_status
 ON work_document_ingest_log(status, created_at DESC);
+
+
+CREATE TABLE IF NOT EXISTS work_employee_fuel_cards (
+    id TEXT PRIMARY KEY,
+    employee_id TEXT NOT NULL,
+    card_number TEXT NOT NULL,
+    valid_from TEXT,
+    valid_to TEXT,
+    active INTEGER NOT NULL DEFAULT 1,
+    source TEXT NOT NULL DEFAULT 'manual',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(employee_id) REFERENCES work_employees(id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_employee_fuel_cards_active_number
+ON work_employee_fuel_cards(card_number)
+WHERE active=1;
+
+CREATE INDEX IF NOT EXISTS idx_employee_fuel_cards_employee
+ON work_employee_fuel_cards(employee_id, active, valid_from, valid_to);
+
+CREATE TABLE IF NOT EXISTS garage_vehicles (
+    id TEXT PRIMARY KEY,
+    registration_number TEXT NOT NULL UNIQUE,
+    vin TEXT NOT NULL DEFAULT '',
+    make TEXT NOT NULL DEFAULT '',
+    model TEXT NOT NULL DEFAULT '',
+    department TEXT NOT NULL DEFAULT '',
+    fuel_type TEXT NOT NULL DEFAULT '',
+    default_norm_l_per_100km REAL,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_garage_vehicles_vin
+ON garage_vehicles(vin)
+WHERE vin!='';
+
+CREATE TABLE IF NOT EXISTS garage_driver_vehicle_assignments (
+    id TEXT PRIMARY KEY,
+    employee_id TEXT NOT NULL,
+    vehicle_id TEXT NOT NULL,
+    valid_from TEXT,
+    valid_to TEXT,
+    active INTEGER NOT NULL DEFAULT 1,
+    source TEXT NOT NULL DEFAULT 'manual',
+    note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(employee_id) REFERENCES work_employees(id) ON DELETE CASCADE,
+    FOREIGN KEY(vehicle_id) REFERENCES garage_vehicles(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_garage_driver_vehicle_employee
+ON garage_driver_vehicle_assignments(employee_id, active, valid_from, valid_to);
+
+CREATE INDEX IF NOT EXISTS idx_garage_driver_vehicle_vehicle
+ON garage_driver_vehicle_assignments(vehicle_id, active, valid_from, valid_to);
+
+CREATE TABLE IF NOT EXISTS garage_waybills (
+    id TEXT PRIMARY KEY,
+    waybill_number TEXT NOT NULL DEFAULT '',
+    trip_date TEXT NOT NULL,
+    employee_id TEXT NOT NULL,
+    vehicle_id TEXT NOT NULL,
+    odometer_start REAL,
+    odometer_end REAL,
+    distance_km REAL NOT NULL DEFAULT 0,
+    fuel_open_l REAL NOT NULL DEFAULT 0,
+    fuel_issued_l REAL NOT NULL DEFAULT 0,
+    fuel_close_l REAL NOT NULL DEFAULT 0,
+    norm_l_per_100km REAL,
+    actual_consumption_l REAL NOT NULL DEFAULT 0,
+    norm_consumption_l REAL,
+    deviation_l REAL,
+    source_document_id TEXT,
+    note TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(employee_id) REFERENCES work_employees(id),
+    FOREIGN KEY(vehicle_id) REFERENCES garage_vehicles(id),
+    FOREIGN KEY(source_document_id) REFERENCES work_documents(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_garage_waybills_month
+ON garage_waybills(trip_date, vehicle_id, employee_id);
+
+CREATE TABLE IF NOT EXISTS garage_fuel_statements (
+    id TEXT PRIMARY KEY,
+    document_id TEXT NOT NULL UNIQUE,
+    original_name TEXT NOT NULL DEFAULT '',
+    period_start TEXT NOT NULL,
+    period_end TEXT NOT NULL,
+    card_count INTEGER NOT NULL DEFAULT 0,
+    transaction_count INTEGER NOT NULL DEFAULT 0,
+    total_liters REAL NOT NULL DEFAULT 0,
+    total_amount REAL NOT NULL DEFAULT 0,
+    parser TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(document_id) REFERENCES work_documents(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_garage_fuel_statements_period
+ON garage_fuel_statements(period_start, period_end);
+
+CREATE TABLE IF NOT EXISTS garage_fuel_transactions (
+    id TEXT PRIMARY KEY,
+    statement_id TEXT NOT NULL,
+    document_id TEXT NOT NULL,
+    source_row INTEGER NOT NULL,
+    card_number TEXT NOT NULL,
+    holder_label TEXT NOT NULL DEFAULT '',
+    employee_id TEXT,
+    vehicle_id TEXT,
+    operation TEXT NOT NULL DEFAULT '',
+    operation_date TEXT NOT NULL,
+    operation_time TEXT NOT NULL DEFAULT '',
+    station TEXT NOT NULL DEFAULT '',
+    fuel_name TEXT NOT NULL DEFAULT '',
+    fuel_kind TEXT NOT NULL DEFAULT '',
+    price_per_liter REAL NOT NULL DEFAULT 0,
+    quantity_l REAL NOT NULL DEFAULT 0,
+    amount REAL NOT NULL DEFAULT 0,
+    resolution_status TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    FOREIGN KEY(statement_id) REFERENCES garage_fuel_statements(id) ON DELETE CASCADE,
+    FOREIGN KEY(document_id) REFERENCES work_documents(id) ON DELETE CASCADE,
+    FOREIGN KEY(employee_id) REFERENCES work_employees(id) ON DELETE SET NULL,
+    FOREIGN KEY(vehicle_id) REFERENCES garage_vehicles(id) ON DELETE SET NULL,
+    UNIQUE(statement_id, source_row)
+);
+
+CREATE INDEX IF NOT EXISTS idx_garage_fuel_transactions_card_date
+ON garage_fuel_transactions(card_number, operation_date);
+
+CREATE INDEX IF NOT EXISTS idx_garage_fuel_transactions_vehicle_date
+ON garage_fuel_transactions(vehicle_id, operation_date);
+
+CREATE INDEX IF NOT EXISTS idx_garage_fuel_transactions_resolution
+ON garage_fuel_transactions(resolution_status, operation_date);
