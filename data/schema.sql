@@ -421,3 +421,22 @@ ON work_document_relations(source_document_id, relation_type);
 
 CREATE INDEX IF NOT EXISTS idx_work_document_relations_target
 ON work_document_relations(target_document_id, relation_type);
+
+
+CREATE TABLE IF NOT EXISTS work_document_ingest_log (
+    id TEXT PRIMARY KEY,
+    filename TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL DEFAULT 'manual',
+    status TEXT NOT NULL,
+    document_id TEXT,
+    error_type TEXT NOT NULL DEFAULT '',
+    message TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    FOREIGN KEY(document_id) REFERENCES work_documents(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_work_document_ingest_log_created
+ON work_document_ingest_log(created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_work_document_ingest_log_status
+ON work_document_ingest_log(status, created_at DESC);
