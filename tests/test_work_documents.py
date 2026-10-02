@@ -241,6 +241,32 @@ class DocumentIntelligenceTests(unittest.TestCase):
                 "content_base64": encoded,
             })
 
+    def test_legacy_rag_documents_are_migrated_and_old_rows_removed(self):
+        rag = RAGIndex(self.db)
+        legacy = rag.ingest(
+            "СЧЁТ № 501 от 02.02.2020\nТовар 1 шт. 500 руб.",
+            title="Старый RAG счёт",
+            source="legacy_ui",
+        )
+        self.assertEqual(self.service.legacy_rag_count(), 1)
+
+        result = self.service.migrate_legacy_rag()
+
+        self.assertEqual(result["migrated"], 1)
+        self.assertEqual(result["failed"], 0)
+        self.assertEqual(self.service.legacy_rag_count(), 0)
+        docs = self.service.documents()
+        self.assertEqual(len(docs), 1)
+        self.assertEqual(docs[0]["document_type"], "invoice")
+        self.assertFalse(any(
+            item["id"] == legacy["id"]
+            for item in rag.documents()
+        ))
+        self.assertTrue(any(
+            item["id"] == docs[0]["id"]
+            for item in rag.documents()
+        ))
+
     def test_ingest_history_and_stats_keep_failure_reason(self):
         self.service.record_ingest_event(
             filename="old.DOC",
