@@ -139,6 +139,12 @@
       "chunk_overlap": 150
     },
     "max_message_chars": 65536,
-    "max_document_chars": 2000000
+    "max_document_chars": 2000000,
+    "reasoning": {
+      "mode": "auto",
+      "tree_threshold": 4,
+      "max_branches": 3,
+      "branch_max_tokens": 512
+    }
   }
 }
