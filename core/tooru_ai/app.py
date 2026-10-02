@@ -22,6 +22,7 @@ CAPABILITIES = [
     "ai_orchestration",
     "chat_runtime",
     "retrieval",
+    "hybrid_reasoning",
 ]
 
 runtime = CoreRuntime(
@@ -31,6 +32,7 @@ runtime = CoreRuntime(
 )
 
 ai_cfg = runtime.config.get("ai_runtime", {})
+reasoning_cfg = ai_cfg.get("reasoning", {})
 secrets = SecretStore()
 memory = AIMemoryStore(runtime.db)
 model_router = ModelRouter(
@@ -52,6 +54,12 @@ chat_runtime = ChatRuntime(
         retrieval_limit=int(ai_cfg.get("retrieval_limit", 6)),
         rag_limit=int(ai_cfg.get("rag_limit", 6)),
         memory_scope=str(ai_cfg.get("memory_scope", "global")),
+        reasoning_mode=str(reasoning_cfg.get("mode", "auto")),
+        reasoning_tree_threshold=int(reasoning_cfg.get("tree_threshold", 4)),
+        reasoning_max_branches=int(reasoning_cfg.get("max_branches", 3)),
+        reasoning_branch_max_tokens=int(
+            reasoning_cfg.get("branch_max_tokens", 512)
+        ),
     ),
     rag=rag,
 )
