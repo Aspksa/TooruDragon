@@ -198,7 +198,7 @@ class WaybillAutomationService:
             for path in root.glob("*.part")
         )
         if total_received_bytes > MAX_BATCH_BYTES:
-            part.unlink(missing_ok=True)
+            shutil.rmtree(root, ignore_errors=True)
             raise ValueError(
                 f"waybill batch is larger than {MAX_BATCH_BYTES} bytes"
             )
