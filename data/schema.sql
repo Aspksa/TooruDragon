@@ -470,6 +470,7 @@ CREATE TABLE IF NOT EXISTS garage_vehicles (
     model TEXT NOT NULL DEFAULT '',
     department TEXT NOT NULL DEFAULT '',
     fuel_type TEXT NOT NULL DEFAULT '',
+    tank_capacity_l REAL,
     default_norm_l_per_100km REAL,
     active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL,
