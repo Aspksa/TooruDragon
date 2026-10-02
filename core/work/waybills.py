@@ -10,6 +10,7 @@ import shutil
 import threading
 import time
 from datetime import date, datetime, timedelta, timezone
+from difflib import SequenceMatcher
 from pathlib import Path
 from uuid import UUID, uuid4, uuid5
 
@@ -281,6 +282,76 @@ class WaybillAutomationService:
         finally:
             temp.unlink(missing_ok=True)
 
+    @staticmethod
+    def _normalized_batch_stem(filename: str) -> str:
+        stem = Path(str(filename or "")).stem.lower().replace("ё", "е")
+        stem = re.sub(
+            r"\b(?:копия|copy|исправлено|исправленный|corrected|"
+            r"версия|version|скан|scan|rev(?:ision)?|v\d+)\b",
+            " ",
+            stem,
+            flags=re.IGNORECASE,
+        )
+        return re.sub(r"[^a-zа-я0-9]+", "", stem, flags=re.IGNORECASE)
+
+    def _possible_batch_version(
+        self,
+        filename: str,
+        size_bytes: int,
+    ) -> dict | None:
+        current_stem = self._normalized_batch_stem(filename)
+        if len(current_stem) < 6:
+            return None
+
+        candidates = self.db.query(
+            """
+            SELECT id, document_id, original_name, size_bytes, sha256,
+                   created_at
+            FROM work_waybill_batches
+            ORDER BY created_at DESC
+            LIMIT 100
+            """
+        )
+        best = None
+        for item in candidates:
+            candidate_stem = self._normalized_batch_stem(
+                item["original_name"]
+            )
+            if not candidate_stem:
+                continue
+            name_score = SequenceMatcher(
+                None,
+                current_stem,
+                candidate_stem,
+            ).ratio()
+            old_size = max(1, int(item.get("size_bytes") or 0))
+            new_size = max(1, int(size_bytes))
+            size_ratio = min(old_size, new_size) / max(old_size, new_size)
+
+            # A version hint is deliberately conservative: either the
+            # normalized name is identical or both the name and size are
+            # strongly similar. It is only a suggestion, never a merge.
+            if current_stem == candidate_stem:
+                score = 0.96 + 0.04 * size_ratio
+            elif name_score >= 0.86 and size_ratio >= 0.65:
+                score = 0.72 * name_score + 0.28 * size_ratio
+            else:
+                continue
+
+            if score < 0.84:
+                continue
+            candidate = {
+                "batch_id": item["id"],
+                "document_id": item.get("document_id") or item["id"],
+                "original_name": item["original_name"],
+                "name_score": round(name_score, 4),
+                "size_ratio": round(size_ratio, 4),
+                "score": round(min(1.0, score), 4),
+            }
+            if best is None or candidate["score"] > best["score"]:
+                best = candidate
+        return best
+
     def _register_batch_file(
         self,
         *,
@@ -304,6 +375,11 @@ class WaybillAutomationService:
             item = self.batch(duplicate[0]["id"])
             item["duplicate"] = True
             return item
+
+        possible_version = self._possible_batch_version(
+            filename,
+            size_bytes,
+        )
 
         batch_id = str(uuid4())
         safe_name = _safe(Path(filename).name, "waybills.pdf")
@@ -385,14 +461,48 @@ class WaybillAutomationService:
             idempotency_key=f"waybill-batch:{sha256}",
             required_capability="waybill_processing",
         )
-        self._set_batch(
-            batch_id,
-            progress={
-                "task_id": task["id"],
-                "priority": "P2",
-                "message": "Пачка поставлена в очередь",
-            },
-        )
+        progress = {
+            "task_id": task["id"],
+            "priority": "P2",
+            "message": "Пачка поставлена в очередь",
+        }
+        if possible_version:
+            progress["possible_version_of"] = possible_version
+            progress["version_message"] = (
+                "Файл отличается от предыдущего, но похож на новую версию "
+                f"{possible_version['original_name']}."
+            )
+            self.db.execute(
+                """
+                INSERT INTO work_document_relations(
+                    id, source_document_id, target_document_id,
+                    relation_type, score, evidence_json, created_at
+                )
+                VALUES(?, ?, ?, 'possible_version_of', ?, ?, ?)
+                ON CONFLICT(
+                    source_document_id,
+                    target_document_id,
+                    relation_type
+                )
+                DO UPDATE SET
+                    score=excluded.score,
+                    evidence_json=excluded.evidence_json
+                """,
+                (
+                    str(uuid4()),
+                    document["id"],
+                    possible_version["document_id"],
+                    possible_version["score"],
+                    _json({
+                        "current_filename": filename,
+                        "previous_filename": possible_version["original_name"],
+                        "name_score": possible_version["name_score"],
+                        "size_ratio": possible_version["size_ratio"],
+                    }),
+                    _now(),
+                ),
+            )
+        self._set_batch(batch_id, progress=progress)
         self._audit(
             actor=uploaded_by,
             action="waybill_batch_uploaded",
