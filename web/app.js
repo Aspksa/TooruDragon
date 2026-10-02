@@ -14,6 +14,11 @@ const state = {
   selectedWorkflow: null,
   latencyHistory: [],
   aiConversationId: null,
+  waybills: {
+    batches: [],
+    review: [],
+    pollTimer: null,
+  },
   garage: {
     employees: [],
     vehicles: [],
@@ -36,6 +41,8 @@ const state = {
     overtime: null,
     anomalies: [],
     customColumns: [],
+    waybillCandidates: [],
+    waybillOvertimeSummary: null,
   },
 };
 
@@ -681,6 +688,8 @@ const documentTypeLabels = {
   timesheet:"Табель",
   vehicle_document:"Документ на технику",
   fuel_statement:"Выписка ГСМ",
+  waybill_batch:"Пачка путевых листов",
+  waybill:"Путевой лист",
   other:"Прочее",
 };
 
@@ -812,6 +821,7 @@ async function loadDocuments() {
     }
     renderDocumentStats(state.documents.stats);
     renderDocumentsList(listData.documents || []);
+    await loadWaybillAutomation();
     if (state.documents.selectedId) {
       const stillVisible = (listData.documents || []).some(item=>item.id===state.documents.selectedId);
       if (!stillVisible && !query) renderDocumentDetail(null);
@@ -846,6 +856,325 @@ function fileToBase64(file) {
     };
     reader.readAsArrayBuffer(file);
   });
+}
+
+function bytesToBase64(bytes) {
+  let binary = "";
+  const step = 0x8000;
+  for (let i=0; i<bytes.length; i+=step) {
+    binary += String.fromCharCode(...bytes.subarray(i, i+step));
+  }
+  return btoa(binary);
+}
+
+async function uploadWaybillBatch() {
+  const file = $("#waybill-batch-file")?.files?.[0];
+  if (!file) {
+    toast("Выберите PDF или изображение с путевыми листами", true);
+    return;
+  }
+  const allowed = /\.(pdf|jpe?g|png|tiff?)$/i.test(file.name);
+  if (!allowed) {
+    toast("Пачка путевых листов: поддерживаются PDF/JPG/PNG/TIFF", true);
+    return;
+  }
+
+  const button = $("#waybill-batch-upload");
+  const progress = $("#waybill-upload-progress");
+  const bar = $("#waybill-upload-bar");
+  const percent = $("#waybill-upload-percent");
+  const label = $("#waybill-upload-label");
+  const chunkSize = 2 * 1024 * 1024;
+  const totalChunks = Math.max(1, Math.ceil(file.size / chunkSize));
+  const uploadId = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())+"-"+Math.random());
+
+  button.disabled = true;
+  progress.hidden = false;
+  try {
+    let finalData = null;
+    for (let index=0; index<totalChunks; index++) {
+      const start = index * chunkSize;
+      const end = Math.min(file.size, start + chunkSize);
+      const buffer = await file.slice(start, end).arrayBuffer();
+      const contentBase64 = bytesToBase64(new Uint8Array(buffer));
+      const data = await api("/api/work/waybills/batch/upload-chunk", {
+        method:"POST",
+        body:JSON.stringify({
+          upload_id:uploadId,
+          filename:file.name,
+          chunk_index:index,
+          total_chunks:totalChunks,
+          content_base64:contentBase64,
+          uploaded_by:"user",
+          source:"documents_waybill_batch",
+        }),
+      });
+      finalData = data.upload || null;
+      const done = index + 1;
+      const value = Math.round(done / totalChunks * 100);
+      bar.style.width = value+"%";
+      percent.textContent = value+"%";
+      label.textContent = "Загружено "+done+" / "+totalChunks+" частей";
+    }
+    $("#waybill-batch-file").value = "";
+    if (finalData?.duplicate) {
+      toast("Этот файл уже был загружен. Второй экземпляр не создан.");
+    } else {
+      toast("Пачка загружена и поставлена в фоновую очередь");
+    }
+    await loadWaybillAutomation();
+    await loadDocuments();
+  } catch (e) {
+    toast("Путевые листы: "+e.message, true);
+  } finally {
+    button.disabled = false;
+    setTimeout(()=>{ if(progress) progress.hidden = true; }, 1200);
+  }
+}
+
+function waybillStageLabel(stage) {
+  return ({
+    uploaded:"Загружено",
+    splitting:"Разделение",
+    ocr:"OCR",
+    extracting:"Извлечение",
+    linking:"Связи",
+    calculating:"Расчёты",
+    validating:"Проверки",
+    completed:"Готово",
+  })[stage] || stage || "—";
+}
+
+function renderWaybillBatches(items) {
+  state.waybills.batches = items || [];
+  const root = $("#waybill-batches-list");
+  if (!root) return;
+  root.innerHTML = state.waybills.batches.map(item => {
+    const active = !["completed","failed"].includes(item.status);
+    const summary = item.progress?.summary || {};
+    return '<div class="waybill-batch-card '+escapeHtml(item.status)+'">'+
+      '<div class="document-row-top"><strong>'+escapeHtml(item.original_name)+'</strong>'+
+        '<span class="status-pill '+(item.status==="completed"?"online":"")+'">'+escapeHtml(waybillStageLabel(item.stage))+'</span></div>'+
+      '<div class="waybill-batch-meta">'+
+        '<span>'+escapeHtml(item.page_count || 0)+' стр.</span>'+
+        '<span>'+escapeHtml(item.waybills_detected || 0)+' листов</span>'+
+        '<span>'+escapeHtml(item.waybills_completed || 0)+' изучено</span>'+
+        '<span>'+escapeHtml(item.review_count || 0)+' проверить</span>'+
+        '<span>'+escapeHtml(item.errors_count || 0)+' ошибок</span>'+
+      '</div>'+
+      '<div class="subtitle">'+escapeHtml(item.progress?.message || item.error || "")+'</div>'+
+      (item.status==="completed"
+        ? '<div class="waybill-batch-summary">'+
+            '<span>Авто: '+escapeHtml(summary.vehicles ?? "—")+'</span>'+
+            '<span>Водители: '+escapeHtml(summary.drivers ?? "—")+'</span>'+
+            '<span>Переработка: '+escapeHtml(summary.overtime_candidates ?? "—")+'</span>'+
+            '<span>Аномалии: '+escapeHtml(summary.anomalies ?? "—")+'</span>'+
+          '</div>'
+        : '')+
+      '<div class="actions" style="margin-top:8px">'+
+        '<button class="btn" data-waybill-batch-open="'+escapeHtml(item.id)+'">Открыть результат</button>'+
+        (item.status==="failed"
+          ? '<button class="btn" data-waybill-batch-reprocess="'+escapeHtml(item.id)+'">Повторить</button>'
+          : '')+
+      '</div>'+
+    '</div>';
+  }).join("") || '<div class="empty">Пачек путевых листов пока нет.</div>';
+
+  const totalReview = state.waybills.batches.reduce((sum,item)=>sum+Number(item.review_count||0),0);
+  $("#waybill-batch-review-badge").textContent = totalReview+" на проверку";
+
+  const active = state.waybills.batches.some(item=>!["completed","failed"].includes(item.status));
+  if (state.waybills.pollTimer) {
+    clearTimeout(state.waybills.pollTimer);
+    state.waybills.pollTimer = null;
+  }
+  if (active && state.activePage === "documents") {
+    state.waybills.pollTimer = setTimeout(loadWaybillAutomation, 2000);
+  }
+}
+
+function renderWaybillReview(items) {
+  state.waybills.review = items || [];
+  $("#waybill-review-count").textContent = state.waybills.review.length;
+  $("#waybill-review-count").className = "status-pill "+(state.waybills.review.length?"":"online");
+  $("#waybill-review-list").innerHTML = state.waybills.review.map(item => {
+    const fields = (item.fields || []).filter(field=>!field.verified && Number(field.confidence||0)<0.78);
+    const anomalies = (item.anomalies || []).filter(anomaly=>!anomaly.resolved);
+    return '<div class="waybill-review-card">'+
+      '<div class="section-head"><div><strong>Путевой лист '+escapeHtml(item.waybill_number ? "№"+item.waybill_number : item.id.slice(0,8))+'</strong>'+
+        '<div class="subtitle">'+escapeHtml(item.trip_date || "Дата не определена")+' · '+
+        escapeHtml(item.registration_number || item.vehicle_make || "Автомобиль не определён")+' · '+
+        escapeHtml(item.full_name || item.driver_name || "Водитель не определён")+'</div></div>'+
+        '<span class="status-pill">'+Math.round(Number(item.confidence||0)*100)+'%</span></div>'+
+      '<div class="waybill-review-meta"><span>Страницы: '+escapeHtml((item.source_pages||[]).join(", ") || "—")+'</span>'+
+        '<span>Папка: '+escapeHtml(item.folder_path || "—")+'</span></div>'+
+      (anomalies.length
+        ? '<div class="waybill-review-errors">'+anomalies.map(a=>
+            '<div class="document-issue '+escapeHtml(a.severity)+'"><strong>'+escapeHtml(a.anomaly_type)+'</strong><div>'+escapeHtml(a.message)+'</div></div>'
+          ).join("")+'</div>'
+        : '')+
+      (fields.length
+        ? '<div class="waybill-low-fields">'+fields.map(field=>
+            '<div class="waybill-low-field"><span>'+escapeHtml(field.field_key)+'</span>'+
+              '<strong>'+escapeHtml(field.value || "—")+'</strong>'+
+              '<small>'+Math.round(Number(field.confidence||0)*100)+'%</small>'+
+              '<button class="btn" data-waybill-correct="'+escapeHtml(item.id)+'" data-field-key="'+escapeHtml(field.field_key)+'" data-current-value="'+escapeHtml(field.value || "")+'">Исправить</button></div>'
+          ).join("")+'</div>'
+        : '')+
+      '<div class="actions" style="margin-top:10px">'+
+        '<button class="btn" data-waybill-open="'+escapeHtml(item.id)+'">Открыть документ</button>'+
+        '<button class="btn primary" data-waybill-confirm="'+escapeHtml(item.id)+'">Подтвердить карточку</button>'+
+      '</div>'+
+    '</div>';
+  }).join("") || '<div class="empty">Путевых листов, требующих проверки, нет.</div>';
+}
+
+async function loadWaybillAutomation() {
+  try {
+    const [batchData, reviewData] = await Promise.all([
+      api("/api/work/waybills/batches?limit=30"),
+      api("/api/work/waybills?needs_review=true"),
+    ]);
+    renderWaybillBatches(batchData.batches || []);
+    renderWaybillReview(reviewData.waybills || []);
+  } catch (e) {
+    toast("Автоматизация путевых листов: "+e.message, true);
+  }
+}
+
+async function reprocessWaybillBatch(batchId) {
+  try {
+    await api("/api/work/waybills/batch/reprocess", {
+      method:"POST",
+      body:JSON.stringify({batch_id:batchId}),
+    });
+    toast("Пачка снова поставлена в очередь");
+    await loadWaybillAutomation();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function confirmWaybill(waybillId) {
+  try {
+    await api("/api/work/waybills/confirm", {
+      method:"POST",
+      body:JSON.stringify({waybill_id:waybillId, actor:"user"}),
+    });
+    toast("Путевой лист подтверждён");
+    await loadWaybillAutomation();
+    await loadDocuments();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function correctWaybillField(button) {
+  const waybillId = button.dataset.waybillCorrect;
+  const fieldKey = button.dataset.fieldKey;
+  const current = button.dataset.currentValue || "";
+  const value = prompt("Новое значение для "+fieldKey, current);
+  if (value === null) return;
+  try {
+    await api("/api/work/waybills/field/correct", {
+      method:"POST",
+      body:JSON.stringify({
+        waybill_id:waybillId,
+        field_key:fieldKey,
+        value,
+        actor:"user",
+        reason:"Исправление после проверки OCR",
+      }),
+    });
+    toast("Поле исправлено и расчёты обновлены");
+    await loadWaybillAutomation();
+  } catch (e) { toast(e.message, true); }
+}
+
+function renderWaybillOvertimeCandidates(items) {
+  state.timesheet.waybillCandidates = items || [];
+  const pending = state.timesheet.waybillCandidates.filter(item=>["detected","needs_review"].includes(item.status));
+  $("#waybill-overtime-review-count").textContent = pending.length+" на проверку";
+  $("#waybill-overtime-review-count").className = "status-pill "+(pending.length?"":"online");
+  $("#waybill-overtime-candidates").innerHTML = state.timesheet.waybillCandidates.map(item => {
+    const actionable = ["detected","needs_review"].includes(item.status);
+    return '<div class="waybill-overtime-card '+escapeHtml(item.status)+'">'+
+      '<div class="section-head"><div><strong>'+escapeHtml(item.full_name || "Неизвестный сотрудник")+' · '+escapeHtml(item.work_date || "—")+'</strong>'+
+        '<div class="subtitle">Путевой лист '+escapeHtml(item.waybill_number ? "№"+item.waybill_number : item.waybill_id.slice(0,8))+
+        (item.registration_number?' · '+escapeHtml(item.registration_number):'')+'</div></div>'+
+        '<span class="status-pill '+(item.status==="applied_to_timesheet"?"online":"")+'">'+escapeHtml(item.status)+'</span></div>'+
+      '<div class="waybill-overtime-grid">'+
+        '<div><span>График</span><strong>'+escapeHtml((item.scheduled_start||"—")+"–"+(item.scheduled_end||"—"))+'</strong></div>'+
+        '<div><span>Выезд</span><strong>'+escapeHtml(item.actual_departure||"—")+'</strong></div>'+
+        '<div><span>Возвращение</span><strong>'+escapeHtml(item.actual_return||"—")+'</strong></div>'+
+        '<div><span>До дня</span><strong>'+escapeHtml(item.overtime_before||"00:00")+'</strong></div>'+
+        '<div><span>После дня</span><strong>'+escapeHtml(item.overtime_after||"00:00")+'</strong></div>'+
+        '<div><span>Предварительно</span><strong>'+escapeHtml(item.overtime_total||"00:00")+'</strong></div>'+
+      '</div>'+
+      '<div class="subtitle">'+escapeHtml(item.comment || "")+'</div>'+
+      '<div class="actions" style="margin-top:10px">'+
+        '<button class="btn" data-waybill-open="'+escapeHtml(item.waybill_id)+'">Открыть путевой лист</button>'+
+        (actionable
+          ? '<button class="btn primary" data-overtime-review="'+escapeHtml(item.id)+'" data-overtime-action="approve">Подтвердить</button>'+
+            '<button class="btn" data-overtime-review="'+escapeHtml(item.id)+'" data-overtime-action="correct">Исправить</button>'+
+            '<button class="btn danger" data-overtime-review="'+escapeHtml(item.id)+'" data-overtime-action="reject">Не учитывать</button>'
+          : '')+
+      '</div>'+
+    '</div>';
+  }).join("") || '<div class="empty">Кандидатов переработки по путевым листам нет.</div>';
+}
+
+function renderWaybillOvertimeSummary(summary) {
+  state.timesheet.waybillOvertimeSummary = summary || null;
+  const rows = summary?.employees || [];
+  $("#waybill-overtime-summary-body").innerHTML = rows.map(item =>
+    '<tr>'+
+      '<td><strong>'+escapeHtml(item.full_name)+'</strong></td>'+
+      '<td>'+escapeHtml(item.waybills)+'</td>'+
+      '<td>'+escapeHtml(item.days_with_candidate)+'</td>'+
+      '<td>'+escapeHtml(item.before || "00:00")+'</td>'+
+      '<td>'+escapeHtml(item.after || "00:00")+'</td>'+
+      '<td>'+escapeHtml(item.preliminary || "00:00")+'</td>'+
+      '<td class="ts-positive">'+escapeHtml(item.approved || "00:00")+'</td>'+
+      '<td>'+escapeHtml(item.rejected || "00:00")+'</td>'+
+    '</tr>'
+  ).join("") || '<tr><td colspan="8" class="empty">Нет данных по путевым листам за месяц</td></tr>';
+}
+
+function parseDurationToMinutes(value) {
+  const raw = String(value || "").trim();
+  if (/^\d+$/.test(raw)) return Number(raw);
+  const match = raw.match(/^(\d{1,3}):([0-5]\d)$/);
+  if (!match) return null;
+  return Number(match[1])*60 + Number(match[2]);
+}
+
+async function reviewWaybillOvertime(candidateId, action) {
+  let corrected = null;
+  if (action === "correct") {
+    const raw = prompt("Введите подтверждаемую продолжительность ЧЧ:ММ или минуты");
+    if (raw === null) return;
+    corrected = parseDurationToMinutes(raw);
+    if (corrected === null) {
+      toast("Используйте формат ЧЧ:ММ или целое число минут", true);
+      return;
+    }
+  }
+  try {
+    await api("/api/work/waybills/overtime/review", {
+      method:"POST",
+      body:JSON.stringify({
+        candidate_id:candidateId,
+        action,
+        corrected_total_minutes:corrected,
+        actor:"user",
+        comment: action==="approve"
+          ? "Подтверждено пользователем"
+          : action==="reject"
+          ? "Не учитывать по решению пользователя"
+          : "Исправлено пользователем",
+      }),
+    });
+    toast(action==="approve" ? "Переработка подтверждена и передана в табель" :
+      action==="reject" ? "Кандидат отклонён" : "Кандидат исправлен");
+    await loadTimesheet();
+  } catch (e) { toast(e.message, true); }
 }
 
 async function ingestDocumentFile() {
@@ -1442,24 +1771,30 @@ async function loadTimesheet() {
   ensureTimesheetDefaults();
   const month = $("#timesheet-month")?.value || defaultTimesheetMonth();
   try {
-    const [employeesData, calendarData, summaryData, overtimeData, anomalyData, customData] = await Promise.all([
+    const [employeesData, calendarData, summaryData, overtimeData, anomalyData, customData, waybillCandidateData, waybillSummaryData] = await Promise.all([
       api("/api/work/timesheet/employees?active=true"),
       api("/api/work/timesheet/calendar?month="+encodeURIComponent(month)),
       api("/api/work/timesheet/summary?month="+encodeURIComponent(month)),
       api("/api/work/timesheet/overtime?month="+encodeURIComponent(month)),
       api("/api/work/timesheet/anomalies?month="+encodeURIComponent(month)),
       api("/api/work/timesheet/custom-columns"),
+      api("/api/work/waybills/overtime?month="+encodeURIComponent(month)),
+      api("/api/work/waybills/overtime/summary?month="+encodeURIComponent(month)),
     ]);
     renderTimesheetEmployees(employeesData.employees || []);
     state.timesheet.calendar = calendarData.calendar || null;
     state.timesheet.summary = summaryData.summary || null;
     state.timesheet.overtime = overtimeData.overtime || null;
     state.timesheet.anomalies = anomalyData.anomalies || [];
+    state.timesheet.waybillCandidates = waybillCandidateData.candidates || [];
+    state.timesheet.waybillOvertimeSummary = waybillSummaryData.summary || null;
     renderTimesheetCustomColumns(customData.columns || []);
     renderTimesheetMatrix(state.timesheet.calendar);
     renderTimesheetSummary(state.timesheet.summary);
     renderTimesheetOvertime(state.timesheet.overtime);
     renderTimesheetAnomalies(state.timesheet.anomalies);
+    renderWaybillOvertimeCandidates(state.timesheet.waybillCandidates);
+    renderWaybillOvertimeSummary(state.timesheet.waybillOvertimeSummary);
   } catch (e) {
     toast("Табель: "+e.message, true);
   }
@@ -1474,6 +1809,9 @@ async function saveTimesheetEmployee() {
     schedule_type: $("#ts-employee-schedule").value.trim() || "5/2",
     weekly_hours: Number($("#ts-employee-weekly").value || 40),
     fuel_card_number: $("#ts-employee-fuel-card").value.trim(),
+    workday_start: $("#ts-employee-workday-start").value || null,
+    workday_end: $("#ts-employee-workday-end").value || null,
+    workdays: [0,1,2,3,4],
     active: true,
   };
   try {
@@ -1484,6 +1822,8 @@ async function saveTimesheetEmployee() {
     $("#ts-employee-number").value = "";
     $("#ts-employee-name").value = "";
     $("#ts-employee-fuel-card").value = "";
+    $("#ts-employee-workday-start").value = "";
+    $("#ts-employee-workday-end").value = "";
     toast("Сотрудник добавлен в справочник");
     await loadTimesheet();
   } catch (e) {
@@ -1627,6 +1967,43 @@ document.addEventListener("click", event => {
     openTimesheetCell(timesheetCell.dataset.employeeId, timesheetCell.dataset.workDate);
     return;
   }
+  const waybillOpen = event.target.closest("[data-waybill-open]");
+  if (waybillOpen) {
+    showPage("documents");
+    openDocument(waybillOpen.dataset.waybillOpen);
+    return;
+  }
+  const batchOpen = event.target.closest("[data-waybill-batch-open]");
+  if (batchOpen) {
+    const batchId = batchOpen.dataset.waybillBatchOpen;
+    const first = state.waybills.review.find(item=>item.batch_id===batchId);
+    if (first) openDocument(first.id);
+    else toast("Пачка обработана. Откройте путевые листы через фильтр документов.");
+    return;
+  }
+  const batchReprocess = event.target.closest("[data-waybill-batch-reprocess]");
+  if (batchReprocess) {
+    reprocessWaybillBatch(batchReprocess.dataset.waybillBatchReprocess);
+    return;
+  }
+  const waybillConfirm = event.target.closest("[data-waybill-confirm]");
+  if (waybillConfirm) {
+    confirmWaybill(waybillConfirm.dataset.waybillConfirm);
+    return;
+  }
+  const waybillCorrect = event.target.closest("[data-waybill-correct]");
+  if (waybillCorrect) {
+    correctWaybillField(waybillCorrect);
+    return;
+  }
+  const overtimeReview = event.target.closest("[data-overtime-review]");
+  if (overtimeReview) {
+    reviewWaybillOvertime(
+      overtimeReview.dataset.overtimeReview,
+      overtimeReview.dataset.overtimeAction
+    );
+    return;
+  }
   const documentRow = event.target.closest("[data-document-id]");
   if (documentRow && (documentRow.classList.contains("document-row") || documentRow.classList.contains("document-relation"))) {
     openDocument(documentRow.dataset.documentId);
@@ -1676,6 +2053,7 @@ $("#ai-chat-input").addEventListener("keydown",event=>{
 $("#ai-conversation").addEventListener("change",event=>loadAIConversation(event.target.value));
 $("#ai-memory-save").addEventListener("click",saveAIMemory);
 $("#ai-memory-search").addEventListener("click",searchAIMemory);
+$("#waybill-batch-upload").addEventListener("click",uploadWaybillBatch);
 $("#documents-refresh").addEventListener("click",loadDocuments);
 $("#documents-search-btn").addEventListener("click",loadDocuments);
 $("#documents-search").addEventListener("keydown",event=>{
