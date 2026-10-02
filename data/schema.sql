@@ -297,3 +297,31 @@ ON work_timesheet_entries(work_date, employee_id);
 
 CREATE INDEX IF NOT EXISTS idx_work_timesheet_employee
 ON work_timesheet_entries(employee_id, work_date);
+
+
+CREATE TABLE IF NOT EXISTS work_timesheet_custom_columns (
+    id TEXT PRIMARY KEY,
+    key TEXT NOT NULL UNIQUE,
+    label TEXT NOT NULL,
+    value_type TEXT NOT NULL DEFAULT 'text',
+    sort_order INTEGER NOT NULL DEFAULT 100,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_work_timesheet_custom_columns_order
+ON work_timesheet_custom_columns(active, sort_order, label);
+
+CREATE TABLE IF NOT EXISTS work_timesheet_custom_values (
+    entry_id TEXT NOT NULL,
+    column_id TEXT NOT NULL,
+    value_text TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(entry_id, column_id),
+    FOREIGN KEY(entry_id) REFERENCES work_timesheet_entries(id) ON DELETE CASCADE,
+    FOREIGN KEY(column_id) REFERENCES work_timesheet_custom_columns(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_work_timesheet_custom_values_column
+ON work_timesheet_custom_values(column_id, entry_id);
