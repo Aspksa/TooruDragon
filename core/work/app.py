@@ -127,6 +127,32 @@ def document_stats(_request):
     }
 
 
+def document_file_ingest(request):
+    payload = request.json if isinstance(request.json, dict) else {}
+    try:
+        item = documents.ingest_file(payload)
+    except ValueError as exc:
+        return 400, {
+            "error": "document_file_ingest_failed",
+            "message": str(exc),
+            "filename": str(payload.get("filename") or ""),
+        }
+
+    runtime.events.publish(
+        "work.document.file_ingested",
+        "work",
+        {
+            "document_id": item["id"],
+            "document_type": item["document_type"],
+            "original_name": item["original_name"],
+            "version": item["version"],
+            "duplicate": bool(item.get("duplicate")),
+            "issue_count": len(item.get("issues", [])),
+        },
+    )
+    return 200, {"service": "work", "document": item}
+
+
 def document_ingest(request):
     payload = request.json if isinstance(request.json, dict) else {}
     try:
@@ -378,6 +404,11 @@ if __name__ == "__main__":
         "/documents/stats": Route(document_stats, protected=True),
         "/documents/ingest": Route(
             document_ingest,
+            method="POST",
+            protected=True,
+        ),
+        "/documents/file-ingest": Route(
+            document_file_ingest,
             method="POST",
             protected=True,
         ),
