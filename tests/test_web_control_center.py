@@ -155,12 +155,46 @@ class WebControlCenterProxyTests(unittest.TestCase):
         self.assertIn('data-page="agent"', html)
         self.assertIn('id="tooru-dock"', html)
         self.assertIn('data-open-page="documents"', html)
-        self.assertIn("styles.css?v=ui-light-20261002", html)
-        self.assertIn("app.js?v=ui-light-20261002", html)
+        self.assertIn("styles.css?v=ui-system-20261002", html)
+        self.assertIn("app.js?v=ui-system-20261002", html)
         self.assertIn("TooruDragon Light Workspace", css)
         self.assertIn("--bg:#f4f7fb", css)
         self.assertIn('openPage.dataset.openPage', script)
         self.assertIn('agent:["Тоору"', script)
+
+    def test_module_icons_and_form_design_system_are_present(self):
+        html = (Path(ROOT) / "index.html").read_text(encoding="utf-8")
+        css = (Path(ROOT) / "styles.css").read_text(encoding="utf-8")
+        script = (Path(ROOT) / "app.js").read_text(encoding="utf-8")
+
+        for icon_id in (
+            "i-home",
+            "i-spark",
+            "i-document",
+            "i-garage",
+            "i-timesheet",
+            "i-cpu",
+            "i-task",
+            "i-workflow",
+            "i-activity",
+            "i-settings",
+            "i-shield",
+        ):
+            self.assertIn(f'id="{icon_id}"', html)
+
+        self.assertEqual(
+            html.count('<span class="nav-icon"><svg class="ui-icon">'),
+            11,
+        )
+        self.assertIn('id="page-icon"', html)
+        self.assertIn("Unified UI Design System", css)
+        self.assertIn('input[type="file"]::file-selector-button', css)
+        self.assertIn(".module-icon", css)
+        self.assertIn(".field-error", css)
+        self.assertIn(".field-success", css)
+        self.assertIn("const pageIcons", script)
+        self.assertIn("function svgIcon", script)
+        self.assertNotIn('tooru_ai: ["🐉"', script)
 
     def test_garage_workspace_and_legacy_xls_upload_are_present(self):
         html = (Path(ROOT) / "index.html").read_text(encoding="utf-8")
