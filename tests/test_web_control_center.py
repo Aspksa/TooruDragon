@@ -48,6 +48,7 @@ class WebControlCenterProxyTests(unittest.TestCase):
         self.assertTrue(_allowed("POST", "work", "/documents/file-ingest"))
         self.assertTrue(_allowed("POST", "work", "/documents/reanalyze"))
         self.assertTrue(_allowed("POST", "work", "/documents/archive"))
+        self.assertTrue(_allowed("POST", "work", "/documents/migrate-legacy-rag"))
 
     def test_arbitrary_local_proxying_is_rejected(self):
         self.assertFalse(_allowed("GET", "main", "/system"))
