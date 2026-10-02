@@ -11,7 +11,7 @@ import threading
 import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4, uuid5
 
 from core.system.ai_memory import AIMemoryStore
 from core.system.database import Database
@@ -395,8 +395,13 @@ class WaybillAutomationService:
             self._set_batch(
                 batch_id,
                 status="processing",
-                stage="ocr",
+                stage="splitting",
                 error="",
+                progress={"message": "Подготовка страниц и границ документов"},
+            )
+            self._set_batch(
+                batch_id,
+                stage="ocr",
                 progress={"message": "Распознавание страниц"},
             )
             pages = self._cached_or_ocr_pages(batch_id, batch["original_name"], raw)
@@ -405,7 +410,6 @@ class WaybillAutomationService:
                 page_count=len(pages),
                 pages_ocr=len(pages),
                 pages_processed=len(pages),
-                stage="splitting",
                 progress={
                     "message": "Определение границ путевых листов",
                     "pages": len(pages),
@@ -611,9 +615,25 @@ class WaybillAutomationService:
         raw_batch: bytes,
     ) -> dict:
         pages: list[OCRPage] = group["pages"]
-        fields = extract_group_fields(pages)
-        waybill_id = str(uuid4())
         page_numbers = list(group["page_numbers"])
+        page_key = ",".join(str(value) for value in page_numbers)
+        waybill_id = str(uuid5(UUID(batch["id"]), page_key))
+
+        existing = self.db.query(
+            "SELECT id FROM garage_waybills WHERE id=?",
+            (waybill_id,),
+        )
+        if existing:
+            self._ensure_waybill_document(
+                waybill_id=waybill_id,
+                batch=batch,
+                pages=pages,
+                raw_batch=raw_batch,
+                sequence=sequence,
+            )
+            return self.waybill(waybill_id)
+
+        fields = extract_group_fields(pages)
 
         trip_date = self._value(fields, "trip_date")
         waybill_number = self._value(fields, "waybill_number")
@@ -830,52 +850,109 @@ class WaybillAutomationService:
                     ),
                 )
 
-        card_title = self._waybill_title(
-            trip_date,
-            waybill_number,
-            plate,
-            driver_name,
-            sequence,
+        self._ensure_waybill_document(
+            waybill_id=waybill_id,
+            batch=batch,
+            pages=pages,
+            raw_batch=raw_batch,
+            sequence=sequence,
         )
-        ocr_text = "\n\n".join(
-            f"[Страница {page.page_number}]\n{page.text}"
-            for page in pages
+
+        self._seed_waybill_anomalies(
+            waybill_id,
+            fields=fields,
+            missing_critical=missing_critical,
+            low_critical=low_critical,
+            vehicle_id=vehicle_id,
+            employee_id=employee_id,
+            split_needs_review=bool(group.get("needs_review")),
         )
-        # Source marker is intentional: it makes the document identity unique
-        # without changing the extracted field values.
-        document_text = (
-            f"{ocr_text}\n\n"
-            f"[Источник Waybill: {waybill_id}; batch={batch['id']}; "
-            f"pages={','.join(map(str, page_numbers))}]"
-        )
-        document = self.documents.ingest({
-            "_document_id": waybill_id,
-            "_archive_path": folder,
-            "title": card_title,
-            "original_name": (
-                Path(individual_path).name
-                if individual_path
-                else batch["original_name"]
-            ),
-            "text": document_text,
-            "source": "waybill_automation",
-            "source_path": (
-                individual_path
-                or f"{batch['source_path']}#pages={','.join(map(str, page_numbers))}"
-            ),
-            "document_type": "waybill",
-            "family_id": waybill_id,
-            "metadata": {
-                "waybill": {
-                    "waybill_id": waybill_id,
-                    "batch_id": batch["id"],
-                    "source_pages": page_numbers,
-                    "confidence": overall,
-                    "needs_review": needs_review,
-                    "ocr_once": True,
-                }
-            },
-        })
+        return self.waybill(waybill_id)
+
+    def _ensure_waybill_document(
+        self,
+        *,
+        waybill_id: str,
+        batch: dict,
+        pages: list[OCRPage],
+        raw_batch: bytes,
+        sequence: int,
+    ) -> None:
+        waybill = self.waybill(waybill_id)
+        page_numbers = list(waybill.get("source_pages") or [])
+        folder = waybill.get("folder_path") or "Путевые листы/Без сортировки"
+        individual_path = waybill.get("individual_pdf_path") or ""
+        if not individual_path:
+            individual_path = self._export_waybill_pdf(
+                batch=batch,
+                raw_batch=raw_batch,
+                page_numbers=page_numbers,
+                folder_path=folder,
+                trip_date=waybill.get("trip_date") or "",
+                waybill_number=waybill.get("waybill_number") or "",
+                sequence=sequence,
+            )
+            if individual_path:
+                self.db.execute(
+                    """
+                    UPDATE garage_waybills
+                    SET individual_pdf_path=?, updated_at=?
+                    WHERE id=?
+                    """,
+                    (individual_path, _now(), waybill_id),
+                )
+
+        try:
+            document = self.documents.document(
+                waybill_id,
+                include_text=False,
+            )
+        except KeyError:
+            card_title = self._waybill_title(
+                waybill.get("trip_date") or "",
+                waybill.get("waybill_number") or "",
+                waybill.get("registration_number") or "",
+                waybill.get("full_name") or waybill.get("driver_name") or "",
+                sequence,
+            )
+            ocr_text = "\n\n".join(
+                f"[Страница {page.page_number}]\n{page.text}"
+                for page in pages
+            )
+            document_text = (
+                f"{ocr_text}\n\n"
+                f"[Источник Waybill: {waybill_id}; batch={batch['id']}; "
+                f"pages={','.join(map(str, page_numbers))}]"
+            )
+            document = self.documents.ingest({
+                "_document_id": waybill_id,
+                "_archive_path": folder,
+                "title": card_title,
+                "original_name": (
+                    Path(individual_path).name
+                    if individual_path
+                    else batch["original_name"]
+                ),
+                "text": document_text,
+                "source": "waybill_automation",
+                "source_path": (
+                    individual_path
+                    or f"{batch['source_path']}#pages={','.join(map(str, page_numbers))}"
+                ),
+                "document_type": "waybill",
+                "family_id": waybill_id,
+                "metadata": {
+                    "waybill": {
+                        "waybill_id": waybill_id,
+                        "batch_id": batch["id"],
+                        "source_pages": page_numbers,
+                        "confidence": waybill.get("confidence"),
+                        "needs_review": bool(waybill.get("needs_review")),
+                        "ocr_once": True,
+                    }
+                },
+            })
+
         self.db.execute(
             """
             UPDATE garage_waybills
@@ -884,7 +961,9 @@ class WaybillAutomationService:
             """,
             (
                 document["id"],
-                "needs_review" if needs_review else "studied",
+                "needs_review"
+                if waybill.get("needs_review")
+                else "studied",
                 _now(),
                 waybill_id,
             ),
@@ -899,18 +978,16 @@ class WaybillAutomationService:
                     """,
                     (waybill_id, _now(), batch["id"], page_number),
                 )
-
         self._link_document_to_batch(waybill_id, batch["document_id"])
-        self._seed_waybill_anomalies(
-            waybill_id,
-            fields=fields,
-            missing_critical=missing_critical,
-            low_critical=low_critical,
-            vehicle_id=vehicle_id,
-            employee_id=employee_id,
-            split_needs_review=bool(group.get("needs_review")),
-        )
-        return self.waybill(waybill_id)
+
+        if Path(batch["original_name"]).suffix.lower() == ".pdf" and not individual_path:
+            self._anomaly(
+                waybill_id,
+                "individual_pdf_export_unavailable",
+                "warning",
+                "Отдельный PDF путевого листа не создан; сохранена связь со страницами исходного PDF.",
+                {"source_pages": page_numbers},
+            )
 
     def _export_waybill_pdf(
         self,
