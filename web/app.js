@@ -1000,7 +1000,6 @@ function ensureGarageDefaults() {
   if (month && !month.value) month.value = garageMonthDefault();
   const today = new Date().toISOString().slice(0,10);
   if ($("#garage-waybill-date") && !$("#garage-waybill-date").value) $("#garage-waybill-date").value = today;
-  if ($("#garage-assignment-date") && !$("#garage-assignment-date").value) $("#garage-assignment-date").value = today;
 }
 
 function garageNumber(value, digits=2) {
@@ -1083,13 +1082,18 @@ function renderGarageSummary(summary) {
   const unresolved = summary?.unresolved_cards || [];
   $("#garage-unresolved-badge").textContent = unresolved.length;
   $("#garage-unresolved-badge").className = "status-pill " + (unresolved.length ? "" : "online");
-  $("#garage-unresolved-list").innerHTML = unresolved.map(item =>
-    '<div class="garage-unresolved-card">'+
-      '<div><strong>'+escapeHtml(item.card_number)+'</strong>'+(item.holder_label?' · '+escapeHtml(item.holder_label):'')+'</div>'+
+  $("#garage-unresolved-list").innerHTML = unresolved.map(item => {
+    const reason = item.resolution_status === "driver_no_vehicle"
+      ? "Водитель найден, но автомобиль не привязан"
+      : "Карта не привязана к сотруднику";
+    const owner = item.full_name ? " · "+escapeHtml(item.full_name) : "";
+    return '<div class="garage-unresolved-card">'+
+      '<div><strong>'+escapeHtml(item.card_number)+'</strong>'+owner+(item.holder_label?' · '+escapeHtml(item.holder_label):'')+'</div>'+
+      '<div class="subtitle">'+escapeHtml(reason)+'</div>'+
       '<div class="subtitle">'+escapeHtml(item.transactions)+' операций · '+garageNumber(item.liters,3)+' л · '+garageNumber(item.amount,2)+' ₽</div>'+
       '<small>'+escapeHtml(item.first_date)+' → '+escapeHtml(item.last_date)+'</small>'+
-    '</div>'
-  ).join("") || '<div class="empty">Все карты за месяц привязаны.</div>';
+    '</div>';
+  }).join("") || '<div class="empty">Все карты и водители за месяц полностью привязаны.</div>';
 }
 
 function renderGarageStatements(items) {
