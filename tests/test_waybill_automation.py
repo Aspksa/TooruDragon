@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 import tempfile
 import unittest
+from unittest.mock import patch
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -389,6 +390,25 @@ class WaybillAutomationTests(unittest.TestCase):
         self.assertIn("odometer_reversed", kinds)
         self.assertIn("negative_fuel", kinds)
         self.assertIn("negative_calculated_fuel_consumption", kinds)
+
+    def test_batch_upload_size_and_chunk_count_are_bounded(self):
+        service, _ocr = self.service([
+            page(1, waybill_text(2041, date(2026, 9, 10)))
+        ])
+        with patch("core.work.waybills.MAX_BATCH_BYTES", 5):
+            with self.assertRaisesRegex(ValueError, "larger"):
+                service.upload_bytes(
+                    filename="too-large.pdf",
+                    raw=b"123456",
+                )
+        with self.assertRaisesRegex(ValueError, "too many upload chunks"):
+            service.upload_chunk({
+                "upload_id": "too-many",
+                "filename": "batch.pdf",
+                "chunk_index": 0,
+                "total_chunks": 501,
+                "content_base64": "eA==",
+            })
 
     def test_duplicate_upload_uses_sha256_and_does_not_duplicate(self):
         pages = [page(1, waybill_text(205, date(2026, 9, 11)))]
