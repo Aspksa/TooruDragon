@@ -241,6 +241,26 @@ class DocumentIntelligenceTests(unittest.TestCase):
                 "content_base64": encoded,
             })
 
+    def test_ingest_history_and_stats_keep_failure_reason(self):
+        self.service.record_ingest_event(
+            filename="old.DOC",
+            source="web_file",
+            status="failed",
+            error_type="ValueError",
+            message="legacy .DOC is not safely parsed yet",
+        )
+        history = self.service.ingest_history()
+        stats = self.service.stats()
+
+        self.assertEqual(history[0]["filename"], "old.DOC")
+        self.assertEqual(history[0]["status"], "failed")
+        self.assertIn("legacy .DOC", history[0]["message"])
+        self.assertEqual(stats["ingest"]["by_status"]["failed"], 1)
+        self.assertEqual(
+            stats["ingest"]["recent_failures"][0]["error_type"],
+            "ValueError",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
