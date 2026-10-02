@@ -1573,6 +1573,42 @@ class WaybillAutomationService:
             )
             for tx in transactions:
                 quantity = float(tx.get("quantity_l") or 0)
+
+                if (
+                    tx.get("employee_id")
+                    and tx.get("vehicle_id")
+                    and tx.get("operation_date")
+                ):
+                    assignment = self.db.query(
+                        """
+                        SELECT 1
+                        FROM garage_driver_vehicle_assignments
+                        WHERE employee_id=? AND vehicle_id=?
+                          AND (valid_from IS NULL OR valid_from<=?)
+                          AND (valid_to IS NULL OR valid_to>=?)
+                        LIMIT 1
+                        """,
+                        (
+                            tx["employee_id"],
+                            tx["vehicle_id"],
+                            tx["operation_date"],
+                            tx["operation_date"],
+                        ),
+                    )
+                    if not assignment:
+                        self._anomaly(
+                            waybill["id"],
+                            "refuel_outside_vehicle_assignment",
+                            "error",
+                            "Заправка попадает вне периода закрепления автомобиля за водителем.",
+                            {
+                                "transaction_id": tx["id"],
+                                "employee_id": tx["employee_id"],
+                                "vehicle_id": tx["vehicle_id"],
+                                "operation_date": tx["operation_date"],
+                            },
+                        )
+
                 if quantity > 120:
                     self._anomaly(
                         waybill["id"],
