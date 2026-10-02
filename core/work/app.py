@@ -340,6 +340,13 @@ def waybill_status(_request):
                 "completed",
             ],
             "priority": "P2",
+            "worker": {
+                "running": bool(
+                    waybill_worker._thread
+                    and waybill_worker._thread.is_alive()
+                ),
+                "last_error": waybill_worker.last_error,
+            },
         },
     }
 
