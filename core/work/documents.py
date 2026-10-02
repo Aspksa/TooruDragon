@@ -685,6 +685,60 @@ class DocumentIntelligenceService:
             "edges": edges,
         }
 
+    def record_ingest_event(
+        self,
+        *,
+        filename: str = "",
+        source: str = "manual",
+        status: str,
+        document_id: str | None = None,
+        error_type: str = "",
+        message: str = "",
+    ) -> dict:
+        event_id = str(uuid4())
+        created_at = _now()
+        self.db.execute(
+            """
+            INSERT INTO work_document_ingest_log(
+                id, filename, source, status, document_id,
+                error_type, message, created_at
+            )
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                event_id,
+                str(filename or ""),
+                str(source or "manual"),
+                str(status),
+                document_id,
+                str(error_type or ""),
+                str(message or ""),
+                created_at,
+            ),
+        )
+        return {
+            "id": event_id,
+            "filename": str(filename or ""),
+            "source": str(source or "manual"),
+            "status": str(status),
+            "document_id": document_id,
+            "error_type": str(error_type or ""),
+            "message": str(message or ""),
+            "created_at": created_at,
+        }
+
+    def ingest_history(self, limit: int = 100) -> list[dict]:
+        return self.db.query(
+            """
+            SELECT id, filename, source, status, document_id,
+                   error_type, message, created_at
+            FROM work_document_ingest_log
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
+            (max(1, min(int(limit), 500)),),
+        )
+
     def stats(self) -> dict:
         totals = self.db.query(
             """
@@ -713,6 +767,23 @@ class DocumentIntelligenceService:
             GROUP BY severity
             """
         )
+        ingest_rows = self.db.query(
+            """
+            SELECT status, COUNT(*) AS count
+            FROM work_document_ingest_log
+            GROUP BY status
+            """
+        )
+        recent_failures = self.db.query(
+            """
+            SELECT id, filename, source, status, document_id,
+                   error_type, message, created_at
+            FROM work_document_ingest_log
+            WHERE status='failed'
+            ORDER BY created_at DESC
+            LIMIT 20
+            """
+        )
         return {
             "documents": {
                 "total": int(totals["documents"] or 0),
@@ -721,6 +792,10 @@ class DocumentIntelligenceService:
             },
             "types": types,
             "open_issues": {row["severity"]: row["count"] for row in issues},
+            "ingest": {
+                "by_status": {row["status"]: row["count"] for row in ingest_rows},
+                "recent_failures": recent_failures,
+            },
         }
 
     def _preserve_original(self, item: dict, filename: str, raw: bytes) -> str:
