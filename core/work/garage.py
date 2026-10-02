@@ -213,6 +213,11 @@ class GarageFuelService:
         model = str(payload.get("model") or "").strip()
         department = str(payload.get("department") or "").strip()
         fuel_type = str(payload.get("fuel_type") or "").strip()
+        tank_capacity = _float(
+            payload.get("tank_capacity_l"),
+            "tank_capacity_l",
+            allow_none=True,
+        )
         norm = _float(
             payload.get("default_norm_l_per_100km"),
             "default_norm_l_per_100km",
@@ -230,8 +235,8 @@ class GarageFuelService:
                 """
                 UPDATE garage_vehicles
                 SET registration_number=?, vin=?, make=?, model=?,
-                    department=?, fuel_type=?, default_norm_l_per_100km=?,
-                    active=?, updated_at=?
+                    department=?, fuel_type=?, tank_capacity_l=?,
+                    default_norm_l_per_100km=?, active=?, updated_at=?
                 WHERE id=?
                 """,
                 (
@@ -241,6 +246,7 @@ class GarageFuelService:
                     model,
                     department,
                     fuel_type,
+                    tank_capacity,
                     norm,
                     1 if active else 0,
                     now,
@@ -252,10 +258,10 @@ class GarageFuelService:
                 """
                 INSERT INTO garage_vehicles(
                     id, registration_number, vin, make, model, department,
-                    fuel_type, default_norm_l_per_100km, active,
+                    fuel_type, tank_capacity_l, default_norm_l_per_100km, active,
                     created_at, updated_at
                 )
-                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     vehicle_id,
@@ -265,6 +271,7 @@ class GarageFuelService:
                     model,
                     department,
                     fuel_type,
+                    tank_capacity,
                     norm,
                     1 if active else 0,
                     now,
@@ -277,7 +284,7 @@ class GarageFuelService:
         rows = self.db.query(
             """
             SELECT id, registration_number, vin, make, model, department,
-                   fuel_type, default_norm_l_per_100km, active,
+                   fuel_type, tank_capacity_l, default_norm_l_per_100km, active,
                    created_at, updated_at
             FROM garage_vehicles
             WHERE id=?
@@ -293,7 +300,7 @@ class GarageFuelService:
     def vehicles(self, *, active_only: bool = True) -> list[dict]:
         sql = """
             SELECT id, registration_number, vin, make, model, department,
-                   fuel_type, default_norm_l_per_100km, active,
+                   fuel_type, tank_capacity_l, default_norm_l_per_100km, active,
                    created_at, updated_at
             FROM garage_vehicles
         """
