@@ -295,6 +295,8 @@ class DocumentIntelligenceService:
             )
             self._compare_versions(document_id, previous_id)
 
+        self._sync_status(document_id)
+
         self.rag.ingest(
             text,
             title=title,
@@ -407,6 +409,7 @@ class DocumentIntelligenceService:
         self._rebuild_issues(document_id)
         self._build_relations(document_id)
         self._cross_document_checks(document_id)
+        self._sync_status(document_id)
         self.rag.ingest(
             text,
             title=current["title"],
@@ -523,14 +526,23 @@ class DocumentIntelligenceService:
 
     def archive(self, document_id: str) -> dict:
         self.document(document_id, include_text=False)
-        self.db.execute(
-            """
-            UPDATE work_documents
-            SET archived=1, status='archived', updated_at=?
-            WHERE id=?
-            """,
-            (_now(), document_id),
-        )
+        with self.db.connect() as db:
+            db.execute(
+                """
+                UPDATE work_documents
+                SET archived=1, status='archived', updated_at=?
+                WHERE id=?
+                """,
+                (_now(), document_id),
+            )
+            db.execute(
+                "DELETE FROM ai_document_chunks WHERE document_id=?",
+                (document_id,),
+            )
+            db.execute(
+                "DELETE FROM ai_documents WHERE id=?",
+                (document_id,),
+            )
         return self.document(document_id, include_text=False)
 
     def facts(self, document_id: str) -> list[dict]:
@@ -908,9 +920,10 @@ class DocumentIntelligenceService:
             """,
             (document_type,),
         )
-        for row in rows:
-            if re.sub(r"\W+", "", row["title"].lower()) == normalized_title:
-                return row["family_id"], row["id"], int(row["version"]) + 1
+        if len(normalized_title) >= 12:
+            for row in rows:
+                if re.sub(r"\W+", "", row["title"].lower()) == normalized_title:
+                    return row["family_id"], row["id"], int(row["version"]) + 1
 
         return str(uuid4()), None, 1
 
@@ -1161,6 +1174,29 @@ class DocumentIntelligenceService:
                 json.dumps(evidence, ensure_ascii=False),
                 _now(),
             ),
+        )
+
+    def _sync_status(self, document_id: str) -> None:
+        rows = self.db.query(
+            """
+            SELECT severity, COUNT(*) AS count
+            FROM work_document_issues
+            WHERE document_id=? AND resolved=0
+            GROUP BY severity
+            """,
+            (document_id,),
+        )
+        counts = {row["severity"]: int(row["count"]) for row in rows}
+        status = (
+            "error"
+            if counts.get("error", 0)
+            else "attention"
+            if counts.get("warning", 0)
+            else "studied"
+        )
+        self.db.execute(
+            "UPDATE work_documents SET status=?, updated_at=? WHERE id=?",
+            (status, _now(), document_id),
         )
 
     def _add_issue(
