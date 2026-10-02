@@ -411,7 +411,10 @@ def split_waybill_pages(pages: list[OCRPage]) -> list[dict]:
         starts_new = False
         ambiguous = False
 
-        if anchor["header"]:
+        if anchor["reverse"]:
+            starts_new = False
+            ambiguous = False
+        elif anchor["header"]:
             if anchor["number"] and first["number"]:
                 starts_new = anchor["number"] != first["number"]
             elif anchor["date"] and first["date"] and anchor["date"] != first["date"]:
@@ -426,8 +429,6 @@ def split_waybill_pages(pages: list[OCRPage]) -> list[dict]:
                 starts_new = False
             else:
                 ambiguous = True
-        elif anchor["reverse"]:
-            starts_new = False
         else:
             # No document header: treat as continuation, but flag the split
             # unless strong anchors confirm the same document.
