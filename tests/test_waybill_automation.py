@@ -31,8 +31,8 @@ def waybill_text(
     odo_end: float = 125200,
     fuel_open: float = 20,
     fuel_issued: float = 0,
-    refueled: float = 10,
-    fuel_close: float = 10,
+    refueled: float = 0,
+    fuel_close: float = 0,
     card: str = CARD_1,
     make_model: str = "Hyundai Santa Fe",
     route: str = "Гараж - объект - гараж",
@@ -296,8 +296,8 @@ class WaybillAutomationTests(unittest.TestCase):
                     departure="08:10",
                     returned="16:50",
                     fuel_open=20,
-                    refueled=1,
-                    fuel_close=20,
+                    refueled=0,
+                    fuel_close=0,
                 ),
             ))
             odometer += 10
