@@ -732,10 +732,16 @@ class DocumentIntelligenceService:
                             for cell in row.findall("x:c", ns):
                                 value_node = cell.find("x:v", ns)
                                 value = value_node.text if value_node is not None else ""
-                                if cell.get("t") == "s" and value.isdigit():
+                                cell_type = cell.get("t")
+                                if cell_type == "s" and value.isdigit():
                                     index = int(value)
                                     if 0 <= index < len(shared):
                                         value = shared[index]
+                                elif cell_type == "inlineStr":
+                                    value = "".join(
+                                        node.text or ""
+                                        for node in cell.findall(".//x:t", ns)
+                                    )
                                 values.append(value)
                             if any(str(value).strip() for value in values):
                                 lines.append("\t".join(str(value) for value in values))
@@ -783,23 +789,54 @@ class DocumentIntelligenceService:
                 raise ValueError("unsupported document_type")
             return forced_type
 
-        sample = f"{title}\n{text[:5000]}".lower()
-        if "служебная записка" in sample or "служебн" in sample and "записк" in sample:
+        title_l = str(title or "").lower()
+        head = str(text or "")[:1400].lower()
+        early = str(text or "")[:350].lower()
+
+        def has(value: str, *terms: str) -> bool:
+            return any(term in value for term in terms)
+
+        # Prefer title and document heading over references later in the body.
+        if has(title_l, "служебная записка") or (
+            "служебн" in early and "записк" in early
+        ):
             return "service_memo"
-        if "счет-оферта" in sample or "счёт-оферта" in sample:
+        if has(title_l, "счет-оферта", "счёт-оферта") or has(
+            early, "счет-оферта", "счёт-оферта"
+        ):
             return "invoice_offer"
-        if "договор" in sample or "контракт" in sample:
-            return "contract"
-        if re.search(r"\bсч[её]т\b", sample):
-            return "invoice"
-        if re.search(r"\bакт\b", sample):
-            return "act"
-        if re.search(r"\bприказ\b", sample):
-            return "order"
-        if "табель" in sample and ("рабоч" in sample or "врем" in sample):
+        if "табель" in title_l or (
+            "табель" in early and has(head, "рабоч", "врем")
+        ):
             return "timesheet"
-        if any(term in sample for term in ("птс", "стс", "паспорт транспортного средства")):
+        if has(title_l, "птс", "стс", "паспорт транспортного средства") or has(
+            early, "паспорт транспортного средства"
+        ):
             return "vehicle_document"
+        if re.search(r"\bсч[её]т\b", title_l) or re.search(r"\bсч[её]т\b", early):
+            return "invoice"
+        if re.search(r"\bдоговор\b|\bконтракт\b", title_l) or re.search(
+            r"\bдоговор\b|\bконтракт\b", early
+        ):
+            return "contract"
+        if re.search(r"\bакт\b", title_l) or re.search(r"\bакт\b", early):
+            return "act"
+        if re.search(r"\bприказ\b", title_l) or re.search(r"\bприказ\b", early):
+            return "order"
+
+        # Fallback for documents whose heading was lost during extraction.
+        if "служебная записка" in head:
+            return "service_memo"
+        if has(head, "счет-оферта", "счёт-оферта"):
+            return "invoice_offer"
+        if re.search(r"\bсч[её]т\b", head):
+            return "invoice"
+        if re.search(r"\bдоговор\b|\bконтракт\b", head):
+            return "contract"
+        if re.search(r"\bакт\b", head):
+            return "act"
+        if re.search(r"\bприказ\b", head):
+            return "order"
         return "other"
 
     def _extract_facts(self, text: str) -> list[dict]:
