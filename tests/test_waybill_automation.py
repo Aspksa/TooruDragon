@@ -629,6 +629,82 @@ class WaybillAutomationTests(unittest.TestCase):
         self.assertIn("has_refuel", relations)
         self.assertIn("belongs_to_period", relations)
 
+    def test_refuel_outside_driver_vehicle_assignment_is_detected(self):
+        # The transaction says the driver used this car on 21 September,
+        # while the assignment only starts on 1 October.
+        self.db.execute(
+            """
+            UPDATE garage_driver_vehicle_assignments
+            SET valid_from='2026-10-01'
+            WHERE employee_id=? AND vehicle_id=? AND active=1
+            """,
+            (self.employee1["id"], self.vehicle1["id"]),
+        )
+        statement_document = self.documents.ingest({
+            "title": "Выписка ГСМ сентябрь 2026 · assignment check",
+            "text": "Выписка ГСМ за период 01.09.2026 - 30.09.2026. Проверка периода.",
+            "document_type": "fuel_statement",
+            "source": "test",
+        })
+        self.db.execute(
+            """
+            INSERT INTO garage_fuel_statements(
+                id, document_id, original_name, period_start, period_end,
+                card_count, transaction_count, total_liters, total_amount,
+                parser, created_at, updated_at
+            )
+            VALUES(
+                'statement-period', ?, 'period.xls',
+                '2026-09-01', '2026-09-30',
+                1, 1, 20, 1400, 'test',
+                '2026-09-01T00:00:00+00:00',
+                '2026-09-01T00:00:00+00:00'
+            )
+            """,
+            (statement_document["id"],),
+        )
+        self.db.execute(
+            """
+            INSERT INTO garage_fuel_transactions(
+                id, statement_id, document_id, source_row,
+                card_number, holder_label, employee_id, vehicle_id,
+                operation, operation_date, operation_time, station,
+                fuel_name, fuel_kind, price_per_liter, quantity_l,
+                amount, resolution_status, created_at, updated_at
+            )
+            VALUES(
+                'tx-period', 'statement-period', ?, 1,
+                ?, 'ИВАНОВ', ?, ?, 'Отгрузка', '2026-09-21',
+                '10:00', 'АЗС', 'АИ-95', 'gasoline_95', 70, 20,
+                1400, 'linked', '2026-09-21T00:00:00+00:00',
+                '2026-09-21T00:00:00+00:00'
+            )
+            """,
+            (
+                statement_document["id"],
+                CARD_1,
+                self.employee1["id"],
+                self.vehicle1["id"],
+            ),
+        )
+        service, _ocr, batch = self.process([
+            page(
+                1,
+                waybill_text(
+                    603,
+                    date(2026, 9, 21),
+                    refueled=20,
+                    fuel_open=20,
+                    fuel_close=20,
+                ),
+            )
+        ], raw=b"assignment-period")
+        item = service.waybills(batch_id=batch["id"])[0]
+        self.assertTrue(any(
+            a["anomaly_type"] == "refuel_outside_vehicle_assignment"
+            for a in item["anomalies"]
+        ))
+
     def test_card_assigned_to_other_employee_is_detected(self):
         text = waybill_text(
             602,
