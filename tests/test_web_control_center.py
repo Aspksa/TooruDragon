@@ -30,6 +30,7 @@ class WebControlCenterProxyTests(unittest.TestCase):
         self.assertTrue(_allowed("GET", "work", "/documents/search?q=invoice"))
         self.assertTrue(_allowed("GET", "work", "/documents/graph"))
         self.assertTrue(_allowed("GET", "work", "/documents/stats"))
+        self.assertTrue(_allowed("GET", "work", "/documents/ingest-history?limit=100"))
         self.assertTrue(_allowed("GET", "main", "/api/task/transitions?task_id=abc"))
 
     def test_control_actions_are_explicitly_allowlisted(self):
@@ -124,6 +125,7 @@ class WebControlCenterProxyTests(unittest.TestCase):
         self.assertIn("work.documents_stats", report["snapshot"])
         self.assertIn("work.documents_recent", report["snapshot"])
         self.assertIn("work.documents_graph", report["snapshot"])
+        self.assertIn("work.documents_ingest_history", report["snapshot"])
 
 
 if __name__ == "__main__":
