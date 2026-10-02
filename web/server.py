@@ -89,6 +89,7 @@ GET_ALLOWLIST = {
         "/waybills/batch/pages",
         "/waybills",
         "/waybills/get",
+        "/waybills/monthly-mileage",
         "/waybills/overtime",
         "/waybills/overtime/summary",
         "/waybills/audit",
@@ -284,6 +285,10 @@ def _build_machine_report(fetcher=None) -> dict:
         "work.waybill_status": ("work", "/waybills/status"),
         "work.waybill_batches": ("work", "/waybills/batches?limit=50"),
         "work.waybill_review": ("work", "/waybills?needs_review=true"),
+        "work.waybill_monthly_mileage": (
+            "work",
+            f"/waybills/monthly-mileage?month={datetime.now(timezone.utc).strftime('%Y-%m')}",
+        ),
         "work.waybill_overtime": (
             "work",
             f"/waybills/overtime?month={datetime.now(timezone.utc).strftime('%Y-%m')}",
