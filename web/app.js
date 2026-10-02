@@ -1631,8 +1631,8 @@ document.addEventListener("click", event => {
   const documentTab = event.target.closest("[data-document-tab]");
   if (documentTab) {
     const name = documentTab.dataset.documentTab;
-    $(".document-tabs button").forEach(button=>button.classList.toggle("active", button.dataset.documentTab===name));
-    $("[data-document-panel]").forEach(panel=>panel.classList.toggle("active", panel.dataset.documentPanel===name));
+    $$(".document-tabs button").forEach(button=>button.classList.toggle("active", button.dataset.documentTab===name));
+    $$("[data-document-panel]").forEach(panel=>panel.classList.toggle("active", panel.dataset.documentPanel===name));
     return;
   }
     const deploymentButton = event.target.closest("[data-deployment-action]");
