@@ -74,6 +74,7 @@ GET_ALLOWLIST = {
         "/documents/search",
         "/documents/graph",
         "/documents/stats",
+        "/documents/ingest-history",
     ),
     "supervisor": (
         "/health",
@@ -232,6 +233,10 @@ def _build_machine_report(fetcher=None) -> dict:
         "work.documents_stats": ("work", "/documents/stats"),
         "work.documents_recent": ("work", "/documents?limit=100"),
         "work.documents_graph": ("work", "/documents/graph"),
+        "work.documents_ingest_history": (
+            "work",
+            "/documents/ingest-history?limit=100",
+        ),
         "supervisor.health": ("supervisor", "/health"),
         "supervisor.status": ("supervisor", "/status"),
         "supervisor.deployments": ("supervisor", "/deployments"),
