@@ -61,6 +61,7 @@ def documents_status(_request):
                 "contradiction_checks",
                 "rag_indexing",
                 "safe_archive",
+                "legacy_rag_migration",
             ],
         },
     }
@@ -213,6 +214,21 @@ def document_ingest(request):
         },
     )
     return 200, {"service": "work", "document": item}
+
+
+def document_migrate_legacy_rag(_request):
+    result = documents.migrate_legacy_rag()
+    runtime.events.publish(
+        "work.document.legacy_rag_migrated",
+        "work",
+        {
+            "requested": result["requested"],
+            "migrated": result["migrated"],
+            "duplicates": result["duplicates"],
+            "failed": result["failed"],
+        },
+    )
+    return 200, {"service": "work", "migration": result}
 
 
 def document_reanalyze(request):
@@ -454,6 +470,11 @@ if __name__ == "__main__":
         ),
         "/documents/file-ingest": Route(
             document_file_ingest,
+            method="POST",
+            protected=True,
+        ),
+        "/documents/migrate-legacy-rag": Route(
+            document_migrate_legacy_rag,
             method="POST",
             protected=True,
         ),
