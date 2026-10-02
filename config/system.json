@@ -144,7 +144,13 @@
       "mode": "auto",
       "tree_threshold": 4,
       "max_branches": 3,
-      "branch_max_tokens": 512
+      "branch_max_tokens": 512,
+      "adaptive_enabled": true,
+      "max_depth": 3,
+      "learning_rate": 0.15,
+      "min_branch_weight": 0.5,
+      "max_branch_weight": 1.5,
+      "feedback_min_samples": 3
     }
   }
 }
