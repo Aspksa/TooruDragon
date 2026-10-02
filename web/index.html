@@ -22,6 +22,7 @@
       <button data-page="events">⌁ <span>События</span></button>
       <button data-page="agent">✦ <span>Agent Console</span></button>
       <button data-page="documents">▤ <span>Документы Тоору</span></button>
+      <button data-page="garage">▣ <span>Гараж · ГСМ</span></button>
       <button data-page="timesheet">▦ <span>Табель</span></button>
       <button data-page="control">⚙ <span>Control Plane</span></button>
       <button data-page="audit">☷ <span>Audit</span></button>
@@ -214,7 +215,7 @@
       <div class="section two-col document-ingest-grid">
         <div class="card panel">
           <div class="section-head"><h3>Загрузить файл</h3><span class="status-pill online">автоанализ</span></div>
-          <div class="field"><label>Файл</label><input id="doc-file" type="file" accept=".txt,.md,.csv,.json,.log,.docx,.xlsx,.pdf,.doc"></div>
+          <div class="field"><label>Файл</label><input id="doc-file" type="file" accept=".txt,.md,.csv,.json,.log,.docx,.xlsx,.xls,.pdf,.doc"></div>
           <div class="form-grid" style="margin-top:10px">
             <div class="field"><label>Название (необязательно)</label><input id="doc-file-title" placeholder="Возьмётся из имени файла"></div>
             <div class="field"><label>Тип</label>
@@ -228,12 +229,13 @@
                 <option value="order">Приказ</option>
                 <option value="timesheet">Табель</option>
                 <option value="vehicle_document">Документ на технику</option>
+                <option value="fuel_statement">Выписка ГСМ</option>
                 <option value="other">Прочее</option>
               </select>
             </div>
           </div>
           <button class="btn primary" id="doc-file-ingest" style="margin-top:12px;width:100%">Изучить файл</button>
-          <div class="subtitle" style="margin-top:10px">DOCX/XLSX/TXT читаются встроенно. PDF — через pypdf. Старый .DOC покажет явную причину вместо молчаливой ошибки.</div>
+          <div class="subtitle" style="margin-top:10px">DOCX/XLSX/TXT и выписки .XLS читаются встроенно. PDF — через pypdf. Старый .DOC покажет явную причину вместо молчаливой ошибки.</div>
         </div>
 
         <div class="card panel">
@@ -266,6 +268,7 @@
               <option value="order">Приказы</option>
               <option value="timesheet">Табели</option>
               <option value="vehicle_document">Техника</option>
+              <option value="fuel_statement">Выписки ГСМ</option>
               <option value="other">Прочее</option>
             </select>
           </div>
@@ -312,6 +315,123 @@
       </div>
     </section>
 
+    <section class="page" data-page="garage">
+      <div class="section-head">
+        <div>
+          <h3>Гараж · ГСМ</h3>
+          <div class="subtitle">Топливные карты → водители → автомобили → путевые листы → выписки ГСМ → месячная сверка.</div>
+        </div>
+        <div class="actions">
+          <input id="garage-month" type="month" class="compact-input">
+          <button class="btn" id="garage-reconcile">⟳ Пересвязать</button>
+          <button class="btn" id="garage-refresh">↻ Обновить</button>
+        </div>
+      </div>
+
+      <div class="grid audit-metrics">
+        <div class="card metric"><div class="metric-label">Автомобили</div><div class="metric-value" id="garage-metric-vehicles">0</div><div class="metric-note">активные</div></div>
+        <div class="card metric"><div class="metric-label">Топливные карты</div><div class="metric-value" id="garage-metric-cards">0</div><div class="metric-note">привязаны</div></div>
+        <div class="card metric"><div class="metric-label">Выписки ГСМ</div><div class="metric-value" id="garage-metric-statements">0</div><div class="metric-note">загружено</div></div>
+        <div class="card metric"><div class="metric-label">Не привязано</div><div class="metric-value" id="garage-metric-unresolved">0</div><div class="metric-note">операций</div></div>
+      </div>
+
+      <div class="section two-col">
+        <div class="card panel">
+          <div class="section-head"><h3>Автомобиль</h3><span class="status-pill online">справочник гаража</span></div>
+          <div class="form-grid">
+            <div class="field"><label>Госномер</label><input id="garage-vehicle-reg" placeholder="А123ВС25"></div>
+            <div class="field"><label>VIN</label><input id="garage-vehicle-vin" placeholder="17 символов"></div>
+            <div class="field"><label>Марка</label><input id="garage-vehicle-make" placeholder="Toyota"></div>
+            <div class="field"><label>Модель</label><input id="garage-vehicle-model" placeholder="Land Cruiser 200"></div>
+            <div class="field"><label>Подразделение</label><input id="garage-vehicle-department" placeholder="Администрация"></div>
+            <div class="field"><label>Топливо</label>
+              <select id="garage-vehicle-fuel-type">
+                <option value="">Не указано</option>
+                <option value="gasoline_92">АИ-92</option>
+                <option value="gasoline_95">АИ-95</option>
+                <option value="gasoline_98">АИ-98</option>
+                <option value="diesel">Дизель</option>
+              </select>
+            </div>
+            <div class="field"><label>Норма, л/100 км</label><input id="garage-vehicle-norm" type="number" min="0" step="0.01" placeholder="например 18.5"></div>
+          </div>
+          <button class="btn primary" id="garage-vehicle-save" style="margin-top:12px;width:100%">Добавить автомобиль</button>
+        </div>
+
+        <div class="card panel">
+          <div class="section-head"><h3>Водитель · карта · автомобиль</h3></div>
+          <div class="form-grid">
+            <div class="field"><label>Сотрудник / водитель</label><select id="garage-driver"></select></div>
+            <div class="field"><label>Топливная карта</label><input id="garage-card-number" inputmode="numeric" placeholder="5019..."></div>
+            <div class="field"><label>Автомобиль</label><select id="garage-driver-vehicle"></select></div>
+            <div class="field"><label>Действует с</label><input id="garage-assignment-date" type="date"><small>Оставьте пустым для первой привязки — она применится и к прошлым выпискам.</small></div>
+          </div>
+          <div class="actions" style="margin-top:12px">
+            <button class="btn" id="garage-card-assign">Привязать карту</button>
+            <button class="btn primary" id="garage-vehicle-assign">Привязать автомобиль</button>
+          </div>
+          <div id="garage-driver-directory" class="garage-driver-directory"></div>
+        </div>
+      </div>
+
+      <div class="section card panel">
+        <div class="section-head">
+          <div><h3>Путевой лист</h3><div class="subtitle">Факт = остаток начало + получено − остаток конец. Норма = пробег × норма / 100.</div></div>
+          <span class="status-pill online">расчёт ГСМ</span>
+        </div>
+        <div class="form-grid garage-waybill-grid">
+          <div class="field"><label>Дата</label><input id="garage-waybill-date" type="date"></div>
+          <div class="field"><label>№ путевого листа</label><input id="garage-waybill-number" placeholder="необязательно"></div>
+          <div class="field"><label>Водитель</label><select id="garage-waybill-driver"></select></div>
+          <div class="field"><label>Автомобиль</label><select id="garage-waybill-vehicle"></select></div>
+          <div class="field"><label>Одометр начало</label><input id="garage-odo-start" type="number" min="0" step="0.1"></div>
+          <div class="field"><label>Одометр конец</label><input id="garage-odo-end" type="number" min="0" step="0.1"></div>
+          <div class="field"><label>Остаток начало, л</label><input id="garage-fuel-open" type="number" min="0" step="0.01" value="0"></div>
+          <div class="field"><label>Получено/заправлено, л</label><input id="garage-fuel-issued" type="number" min="0" step="0.01" value="0"></div>
+          <div class="field"><label>Остаток конец, л</label><input id="garage-fuel-close" type="number" min="0" step="0.01" value="0"></div>
+          <div class="field"><label>Норма, л/100 км</label><input id="garage-waybill-norm" type="number" min="0" step="0.01" placeholder="из автомобиля"></div>
+          <div class="field"><label>Примечание</label><input id="garage-waybill-note" placeholder="необязательно"></div>
+        </div>
+        <button class="btn primary" id="garage-waybill-save" style="margin-top:12px">Сохранить и рассчитать</button>
+      </div>
+
+      <div class="section grid garage-fuel-kpis">
+        <div class="card metric"><div class="metric-label">По выпискам</div><div class="metric-value" id="garage-month-statement-liters">0</div><div class="metric-note">литров</div></div>
+        <div class="card metric"><div class="metric-label">Сумма</div><div class="metric-value" id="garage-month-statement-amount">0</div><div class="metric-note">₽</div></div>
+        <div class="card metric"><div class="metric-label">Пробег</div><div class="metric-value" id="garage-month-distance">0</div><div class="metric-note">км по путевым</div></div>
+        <div class="card metric"><div class="metric-label">Расход факт</div><div class="metric-value" id="garage-month-consumption">0</div><div class="metric-note">л по путевым</div></div>
+        <div class="card metric"><div class="metric-label">Расход норма</div><div class="metric-value" id="garage-month-norm">0</div><div class="metric-note">л</div></div>
+        <div class="card metric"><div class="metric-label">Отклонение</div><div class="metric-value" id="garage-month-deviation">0</div><div class="metric-note">л факт − норма</div></div>
+      </div>
+
+      <div class="section card panel">
+        <div class="section-head"><h3>Сверка ГСМ по автомобилям и водителям</h3></div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Автомобиль</th><th>Водитель</th><th>Выписка, л</th><th>Путевые: получено, л</th><th>Разница</th><th>Пробег</th><th>Факт расход</th><th>Норма</th><th>Отклонение</th></tr></thead>
+          <tbody id="garage-summary-body"></tbody>
+        </table></div>
+      </div>
+
+      <div class="section two-col">
+        <div class="card panel">
+          <div class="section-head"><h3>Требуют привязки</h3><span class="status-pill" id="garage-unresolved-badge">0</span></div>
+          <div id="garage-unresolved-list" class="stack-list"></div>
+        </div>
+        <div class="card panel">
+          <div class="section-head"><h3>Выписки ГСМ</h3><span class="subtitle">Документы Тоору → Выписки ГСМ / год / месяц</span></div>
+          <div id="garage-statements-list" class="stack-list"></div>
+        </div>
+      </div>
+
+      <div class="section card panel">
+        <div class="section-head"><h3>Путевые листы за месяц</h3></div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Дата</th><th>№</th><th>Автомобиль</th><th>Водитель</th><th>Пробег</th><th>Получено</th><th>Факт</th><th>Норма</th><th>Отклонение</th></tr></thead>
+          <tbody id="garage-waybills-body"></tbody>
+        </table></div>
+      </div>
+    </section>
+
     <section class="page" data-page="timesheet">
       <div class="section-head">
         <div>
@@ -353,6 +473,7 @@
             <div class="field"><label>Должность</label><input id="ts-employee-position" placeholder="Должность"></div>
             <div class="field"><label>График</label><input id="ts-employee-schedule" value="5/2"></div>
             <div class="field"><label>Часов в неделю</label><input id="ts-employee-weekly" type="number" min="0" max="168" step="0.5" value="40"></div>
+            <div class="field"><label>Топливная карта</label><input id="ts-employee-fuel-card" inputmode="numeric" placeholder="Номер карты"></div>
           </div>
           <button class="btn primary" id="ts-employee-save" style="margin-top:12px;width:100%">Добавить сотрудника</button>
         </div>

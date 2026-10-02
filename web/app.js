@@ -14,6 +14,14 @@ const state = {
   selectedWorkflow: null,
   latencyHistory: [],
   aiConversationId: null,
+  garage: {
+    employees: [],
+    vehicles: [],
+    summary: null,
+    statements: [],
+    waybills: [],
+    stats: null,
+  },
   documents: {
     items: [],
     selectedId: null,
@@ -672,6 +680,7 @@ const documentTypeLabels = {
   order:"Приказ",
   timesheet:"Табель",
   vehicle_document:"Документ на технику",
+  fuel_statement:"Выписка ГСМ",
   other:"Прочее",
 };
 
@@ -868,7 +877,13 @@ async function ingestDocumentFile() {
     $("#doc-file-title").value = "";
     await loadDocuments();
     await openDocument(data.document.id);
-    toast(data.document.duplicate ? "Дубликат уже был изучен" : "Документ изучен");
+    if (data.fuel_import?.ok) {
+      toast("Выписка ГСМ изучена и передана в гараж");
+    } else if (data.fuel_import && !data.fuel_import.ok) {
+      toast("Выписка сохранена, но импорт ГСМ требует внимания", true);
+    } else {
+      toast(data.document.duplicate ? "Дубликат уже был изучен" : "Документ изучен");
+    }
   } catch (e) {
     toast("Документ: "+e.message, true);
   } finally {
@@ -975,6 +990,290 @@ function updateConnection() {
   $("#conn-text").textContent = ok ? "Control Plane подключён" : "Есть недоступные компоненты";
 }
 
+
+function garageMonthDefault() {
+  return new Date().toISOString().slice(0,7);
+}
+
+function ensureGarageDefaults() {
+  const month = $("#garage-month");
+  if (month && !month.value) month.value = garageMonthDefault();
+  const today = new Date().toISOString().slice(0,10);
+  if ($("#garage-waybill-date") && !$("#garage-waybill-date").value) $("#garage-waybill-date").value = today;
+}
+
+function garageNumber(value, digits=2) {
+  return Number(value || 0).toLocaleString("ru-RU", {
+    minimumFractionDigits:0,
+    maximumFractionDigits:digits,
+  });
+}
+
+function renderGarageSelects() {
+  const employees = state.garage.employees || [];
+  const vehicles = state.garage.vehicles || [];
+  const employeeOptions = employees
+    .filter(item=>item.active)
+    .map(item=>'<option value="'+escapeHtml(item.id)+'">'+escapeHtml(item.full_name)+' · № '+escapeHtml(item.personnel_number)+'</option>')
+    .join("");
+  for (const id of ["garage-driver","garage-waybill-driver"]) {
+    const el = $("#"+id);
+    if (!el) continue;
+    const current = el.value;
+    el.innerHTML = employeeOptions || '<option value="">Нет сотрудников</option>';
+    if (current && employees.some(item=>item.id===current)) el.value = current;
+  }
+
+  const vehicleOptions = vehicles
+    .filter(item=>item.active)
+    .map(item=>'<option value="'+escapeHtml(item.id)+'">'+escapeHtml(item.registration_number)+' · '+escapeHtml([item.make,item.model].filter(Boolean).join(" "))+'</option>')
+    .join("");
+  for (const id of ["garage-driver-vehicle","garage-waybill-vehicle"]) {
+    const el = $("#"+id);
+    if (!el) continue;
+    const current = el.value;
+    el.innerHTML = vehicleOptions || '<option value="">Нет автомобилей</option>';
+    if (current && vehicles.some(item=>item.id===current)) el.value = current;
+  }
+}
+
+function renderGarageDirectory() {
+  const root = $("#garage-driver-directory");
+  if (!root) return;
+  root.innerHTML = (state.garage.employees || []).map(item => {
+    const vehicle = item.registration_number
+      ? item.registration_number+" · "+[item.make,item.model].filter(Boolean).join(" ")
+      : "автомобиль не привязан";
+    return '<div class="garage-driver-row">'+
+      '<div><strong>'+escapeHtml(item.full_name)+'</strong><small>№ '+escapeHtml(item.personnel_number)+' · '+escapeHtml(item.department || "без подразделения")+'</small></div>'+
+      '<div><span>Карта</span><strong>'+escapeHtml(item.fuel_card_number || "—")+'</strong></div>'+
+      '<div><span>Авто</span><strong>'+escapeHtml(vehicle)+'</strong></div>'+
+    '</div>';
+  }).join("") || '<div class="empty">Добавьте сотрудников в справочник.</div>';
+}
+
+function renderGarageSummary(summary) {
+  const statement = summary?.statement || {};
+  const waybills = summary?.waybills || {};
+  $("#garage-month-statement-liters").textContent = garageNumber(statement.liters, 3);
+  $("#garage-month-statement-amount").textContent = garageNumber(statement.amount, 2);
+  $("#garage-month-distance").textContent = garageNumber(waybills.distance_km, 1);
+  $("#garage-month-consumption").textContent = garageNumber(waybills.consumption_l, 3);
+  $("#garage-month-norm").textContent = garageNumber(waybills.norm_l, 3);
+  $("#garage-month-deviation").textContent = garageNumber(waybills.deviation_l, 3);
+
+  const body = $("#garage-summary-body");
+  body.innerHTML = (summary?.rows || []).map(item => {
+    const diff = Number(item.statement_vs_waybill_liters || 0);
+    const dev = Number(item.deviation_liters || 0);
+    return '<tr>'+
+      '<td><strong>'+escapeHtml(item.registration_number)+'</strong><br><span class="muted">'+escapeHtml(item.vehicle_name || "")+'</span></td>'+
+      '<td>'+escapeHtml(item.full_name)+'</td>'+
+      '<td>'+garageNumber(item.statement_liters,3)+'</td>'+
+      '<td>'+garageNumber(item.waybill_issued_liters,3)+'</td>'+
+      '<td class="'+(Math.abs(diff)>0.01?'ts-negative':'ts-positive')+'">'+garageNumber(diff,3)+'</td>'+
+      '<td>'+garageNumber(item.distance_km,1)+'</td>'+
+      '<td>'+garageNumber(item.consumption_liters,3)+'</td>'+
+      '<td>'+garageNumber(item.norm_liters,3)+'</td>'+
+      '<td class="'+(dev>0?'ts-negative':dev<0?'ts-positive':'')+'">'+garageNumber(dev,3)+'</td>'+
+    '</tr>';
+  }).join("") || '<tr><td colspan="9" class="empty">Нет связанных данных за месяц</td></tr>';
+
+  const unresolved = summary?.unresolved_cards || [];
+  $("#garage-unresolved-badge").textContent = unresolved.length;
+  $("#garage-unresolved-badge").className = "status-pill " + (unresolved.length ? "" : "online");
+  $("#garage-unresolved-list").innerHTML = unresolved.map(item => {
+    const reason = item.resolution_status === "driver_no_vehicle"
+      ? "Водитель найден, но автомобиль не привязан"
+      : "Карта не привязана к сотруднику";
+    const owner = item.full_name ? " · "+escapeHtml(item.full_name) : "";
+    return '<div class="garage-unresolved-card">'+
+      '<div><strong>'+escapeHtml(item.card_number)+'</strong>'+owner+(item.holder_label?' · '+escapeHtml(item.holder_label):'')+'</div>'+
+      '<div class="subtitle">'+escapeHtml(reason)+'</div>'+
+      '<div class="subtitle">'+escapeHtml(item.transactions)+' операций · '+garageNumber(item.liters,3)+' л · '+garageNumber(item.amount,2)+' ₽</div>'+
+      '<small>'+escapeHtml(item.first_date)+' → '+escapeHtml(item.last_date)+'</small>'+
+    '</div>';
+  }).join("") || '<div class="empty">Все карты и водители за месяц полностью привязаны.</div>';
+}
+
+function renderGarageStatements(items) {
+  $("#garage-statements-list").innerHTML = (items || []).map(item =>
+    '<div class="stack-item">'+
+      '<strong>'+escapeHtml(item.period_start)+' — '+escapeHtml(item.period_end)+'</strong>'+
+      '<div class="subtitle">'+escapeHtml(item.original_name || "Выписка ГСМ")+'</div>'+
+      '<div class="garage-statement-meta">'+
+        '<span>'+escapeHtml(item.card_count)+' карт</span>'+
+        '<span>'+escapeHtml(item.transaction_count)+' операций</span>'+
+        '<span>'+garageNumber(item.total_liters,3)+' л</span>'+
+        '<span>'+garageNumber(item.total_amount,2)+' ₽</span>'+
+        '<span class="'+(Number(item.unresolved_transactions||0)?'ts-negative':'ts-positive')+'">'+escapeHtml(item.unresolved_transactions || 0)+' не привязано</span>'+
+      '</div>'+
+    '</div>'
+  ).join("") || '<div class="empty">Выписки ГСМ ещё не загружены.</div>';
+}
+
+function renderGarageWaybills(items) {
+  $("#garage-waybills-body").innerHTML = (items || []).map(item => {
+    const dev = Number(item.deviation_l || 0);
+    return '<tr>'+
+      '<td>'+escapeHtml(item.trip_date)+'</td>'+
+      '<td>'+escapeHtml(item.waybill_number || "—")+'</td>'+
+      '<td>'+escapeHtml(item.registration_number)+'</td>'+
+      '<td>'+escapeHtml(item.full_name)+'</td>'+
+      '<td>'+garageNumber(item.distance_km,1)+'</td>'+
+      '<td>'+garageNumber(item.fuel_issued_l,3)+'</td>'+
+      '<td>'+garageNumber(item.actual_consumption_l,3)+'</td>'+
+      '<td>'+garageNumber(item.norm_consumption_l,3)+'</td>'+
+      '<td class="'+(dev>0?'ts-negative':dev<0?'ts-positive':'')+'">'+garageNumber(dev,3)+'</td>'+
+    '</tr>';
+  }).join("") || '<tr><td colspan="9" class="empty">Путевых листов за месяц нет</td></tr>';
+}
+
+async function loadGarage() {
+  ensureGarageDefaults();
+  const month = $("#garage-month")?.value || garageMonthDefault();
+  try {
+    const [statsData, employeeData, vehicleData, summaryData, statementData, waybillData] = await Promise.all([
+      api("/api/work/garage/stats"),
+      api("/api/work/garage/employees"),
+      api("/api/work/garage/vehicles"),
+      api("/api/work/garage/fuel/summary?month="+encodeURIComponent(month)),
+      api("/api/work/garage/fuel/statements"),
+      api("/api/work/garage/waybills?month="+encodeURIComponent(month)),
+    ]);
+    state.garage.stats = statsData.stats || {};
+    state.garage.employees = employeeData.employees || [];
+    state.garage.vehicles = vehicleData.vehicles || [];
+    state.garage.summary = summaryData.summary || null;
+    state.garage.statements = statementData.statements || [];
+    state.garage.waybills = waybillData.waybills || [];
+
+    $("#garage-metric-vehicles").textContent = state.garage.stats.vehicles ?? 0;
+    $("#garage-metric-cards").textContent = state.garage.stats.active_fuel_cards ?? 0;
+    $("#garage-metric-statements").textContent = state.garage.stats.fuel_statements ?? 0;
+    $("#garage-metric-unresolved").textContent = state.garage.stats.unresolved_transactions ?? 0;
+    renderGarageSelects();
+    renderGarageDirectory();
+    renderGarageSummary(state.garage.summary);
+    renderGarageStatements(state.garage.statements);
+    renderGarageWaybills(state.garage.waybills);
+    syncGarageDriverVehicle();
+  } catch (e) {
+    toast("Гараж: "+e.message, true);
+  }
+}
+
+function syncGarageDriverVehicle() {
+  const driverId = $("#garage-waybill-driver")?.value;
+  if (!driverId) return;
+  const employee = (state.garage.employees || []).find(item=>item.id===driverId);
+  if (employee?.vehicle_id && $("#garage-waybill-vehicle")) {
+    $("#garage-waybill-vehicle").value = employee.vehicle_id;
+    const vehicle = (state.garage.vehicles || []).find(item=>item.id===employee.vehicle_id);
+    if (vehicle?.default_norm_l_per_100km != null && $("#garage-waybill-norm") && !$("#garage-waybill-norm").value) {
+      $("#garage-waybill-norm").value = vehicle.default_norm_l_per_100km;
+    }
+  }
+}
+
+async function saveGarageVehicle() {
+  try {
+    await api("/api/work/garage/vehicle/save", {
+      method:"POST",
+      body:JSON.stringify({
+        registration_number:$("#garage-vehicle-reg").value.trim(),
+        vin:$("#garage-vehicle-vin").value.trim(),
+        make:$("#garage-vehicle-make").value.trim(),
+        model:$("#garage-vehicle-model").value.trim(),
+        department:$("#garage-vehicle-department").value.trim(),
+        fuel_type:$("#garage-vehicle-fuel-type").value,
+        default_norm_l_per_100km:$("#garage-vehicle-norm").value || null,
+        active:true,
+      }),
+    });
+    $("#garage-vehicle-reg").value = "";
+    $("#garage-vehicle-vin").value = "";
+    $("#garage-vehicle-make").value = "";
+    $("#garage-vehicle-model").value = "";
+    $("#garage-vehicle-norm").value = "";
+    toast("Автомобиль добавлен в гараж");
+    await loadGarage();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function assignGarageFuelCard() {
+  const employeeId = $("#garage-driver").value;
+  try {
+    await api("/api/work/garage/fuel-card/assign", {
+      method:"POST",
+      body:JSON.stringify({
+        employee_id:employeeId,
+        card_number:$("#garage-card-number").value.trim(),
+        valid_from:$("#garage-assignment-date").value || null,
+      }),
+    });
+    $("#garage-card-number").value = "";
+    toast("Топливная карта привязана");
+    await loadGarage();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function assignGarageVehicle() {
+  try {
+    await api("/api/work/garage/driver-vehicle/assign", {
+      method:"POST",
+      body:JSON.stringify({
+        employee_id:$("#garage-driver").value,
+        vehicle_id:$("#garage-driver-vehicle").value,
+        valid_from:$("#garage-assignment-date").value || null,
+      }),
+    });
+    toast("Автомобиль привязан к водителю");
+    await loadGarage();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function saveGarageWaybill() {
+  try {
+    const data = await api("/api/work/garage/waybill/save", {
+      method:"POST",
+      body:JSON.stringify({
+        trip_date:$("#garage-waybill-date").value,
+        waybill_number:$("#garage-waybill-number").value.trim(),
+        employee_id:$("#garage-waybill-driver").value,
+        vehicle_id:$("#garage-waybill-vehicle").value,
+        odometer_start:$("#garage-odo-start").value || null,
+        odometer_end:$("#garage-odo-end").value || null,
+        fuel_open_l:$("#garage-fuel-open").value || 0,
+        fuel_issued_l:$("#garage-fuel-issued").value || 0,
+        fuel_close_l:$("#garage-fuel-close").value || 0,
+        norm_l_per_100km:$("#garage-waybill-norm").value || null,
+        note:$("#garage-waybill-note").value.trim(),
+      }),
+    });
+    const w = data.waybill || {};
+    toast("Путевой лист: расход "+garageNumber(w.actual_consumption_l,3)+" л, отклонение "+garageNumber(w.deviation_l,3)+" л");
+    $("#garage-waybill-number").value = "";
+    $("#garage-odo-start").value = "";
+    $("#garage-odo-end").value = "";
+    $("#garage-fuel-open").value = "0";
+    $("#garage-fuel-issued").value = "0";
+    $("#garage-fuel-close").value = "0";
+    $("#garage-waybill-note").value = "";
+    await loadGarage();
+  } catch (e) { toast(e.message, true); }
+}
+
+async function reconcileGarageFuel() {
+  try {
+    const data = await api("/api/work/garage/fuel/reconcile", {
+      method:"POST",
+      body:"{}",
+    });
+    toast("Пересвязано операций: "+Number(data.result?.linked || 0));
+    await loadGarage();
+  } catch (e) { toast(e.message, true); }
+}
 
 function defaultTimesheetMonth() {
   return new Date().toISOString().slice(0,7);
@@ -1174,6 +1473,7 @@ async function saveTimesheetEmployee() {
     position: $("#ts-employee-position").value.trim(),
     schedule_type: $("#ts-employee-schedule").value.trim() || "5/2",
     weekly_hours: Number($("#ts-employee-weekly").value || 40),
+    fuel_card_number: $("#ts-employee-fuel-card").value.trim(),
     active: true,
   };
   try {
@@ -1183,7 +1483,8 @@ async function saveTimesheetEmployee() {
     });
     $("#ts-employee-number").value = "";
     $("#ts-employee-name").value = "";
-    toast("Сотрудник добавлен в табель");
+    $("#ts-employee-fuel-card").value = "";
+    toast("Сотрудник добавлен в справочник");
     await loadTimesheet();
   } catch (e) {
     toast(e.message, true);
@@ -1281,6 +1582,7 @@ function showPage(name) {
     events:["События","Durable Event Fabric · live SSE"],
     agent:["Agent Console","Tool Router, Planner и execution transcript"],
     documents:["Документы Тоору","Паспорт, ДНК, версии, связи, проверки и автоматическое изучение"],
+    garage:["Гараж · ГСМ","Карты, водители, автомобили, путевые листы и месячная сверка топлива"],
     timesheet:["Табель","Рабочее время, нормы, фактические часы и контроль отклонений"],
     control:["Control Plane","Supervisor, Gateway, deployments и consumers"],
     audit:["Audit","Lifecycle, events и consumer integrity"],
@@ -1292,6 +1594,7 @@ function showPage(name) {
   if(name==="events") loadEvents();
   if(name==="agent") { loadAgent(); loadAIRuntime(); }
   if(name==="documents") loadDocuments();
+  if(name==="garage") loadGarage();
   if(name==="timesheet") loadTimesheet();
   if(name==="control") loadControlPlane();
   if(name==="audit") loadAudit();
@@ -1306,6 +1609,7 @@ $("#refresh").addEventListener("click",async()=>{
   if(state.activePage==="workflow") await loadWorkflow();
   if(state.activePage==="events") await loadEvents();
   if(state.activePage==="documents") await loadDocuments();
+  if(state.activePage==="garage") await loadGarage();
   if(state.activePage==="timesheet") await loadTimesheet();
   if(state.activePage==="control") await loadControlPlane();
   if(state.activePage==="audit") await loadAudit();
@@ -1331,8 +1635,8 @@ document.addEventListener("click", event => {
   const documentTab = event.target.closest("[data-document-tab]");
   if (documentTab) {
     const name = documentTab.dataset.documentTab;
-    $(".document-tabs button").forEach(button=>button.classList.toggle("active", button.dataset.documentTab===name));
-    $("[data-document-panel]").forEach(panel=>panel.classList.toggle("active", panel.dataset.documentPanel===name));
+    $$(".document-tabs button").forEach(button=>button.classList.toggle("active", button.dataset.documentTab===name));
+    $$("[data-document-panel]").forEach(panel=>panel.classList.toggle("active", panel.dataset.documentPanel===name));
     return;
   }
     const deploymentButton = event.target.closest("[data-deployment-action]");
@@ -1346,6 +1650,14 @@ $("#safe-mode-disable").addEventListener("click",()=>setSafeMode(false));
 $("#tasks-refresh").addEventListener("click",loadTasks);
 $("#task-create").addEventListener("click",createTask);
 $("#events-refresh").addEventListener("click",loadEvents);
+$("#garage-refresh").addEventListener("click",loadGarage);
+$("#garage-month").addEventListener("change",loadGarage);
+$("#garage-reconcile").addEventListener("click",reconcileGarageFuel);
+$("#garage-vehicle-save").addEventListener("click",saveGarageVehicle);
+$("#garage-card-assign").addEventListener("click",assignGarageFuelCard);
+$("#garage-vehicle-assign").addEventListener("click",assignGarageVehicle);
+$("#garage-waybill-save").addEventListener("click",saveGarageWaybill);
+$("#garage-waybill-driver").addEventListener("change",syncGarageDriverVehicle);
 $("#timesheet-refresh").addEventListener("click",loadTimesheet);
 $("#timesheet-month").addEventListener("change",loadTimesheet);
 $("#ts-employee-save").addEventListener("click",saveTimesheetEmployee);

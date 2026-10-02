@@ -148,10 +148,17 @@ class TimesheetService:
     def employee(self, employee_id: str) -> dict:
         rows = self.db.query(
             """
-            SELECT id, personnel_number, full_name, department, position,
-                   schedule_type, weekly_hours, active, created_at, updated_at
-            FROM work_employees
-            WHERE id=?
+            SELECT e.id, e.personnel_number, e.full_name, e.department, e.position,
+                   e.schedule_type, e.weekly_hours, e.active, e.created_at, e.updated_at,
+                   (
+                       SELECT c.card_number
+                       FROM work_employee_fuel_cards c
+                       WHERE c.employee_id=e.id AND c.active=1
+                       ORDER BY c.created_at DESC
+                       LIMIT 1
+                   ) AS fuel_card_number
+            FROM work_employees e
+            WHERE e.id=?
             """,
             (employee_id,),
         )
@@ -163,14 +170,21 @@ class TimesheetService:
 
     def employees(self, *, active_only: bool = False) -> list[dict]:
         sql = """
-            SELECT id, personnel_number, full_name, department, position,
-                   schedule_type, weekly_hours, active, created_at, updated_at
-            FROM work_employees
+            SELECT e.id, e.personnel_number, e.full_name, e.department, e.position,
+                   e.schedule_type, e.weekly_hours, e.active, e.created_at, e.updated_at,
+                   (
+                       SELECT c.card_number
+                       FROM work_employee_fuel_cards c
+                       WHERE c.employee_id=e.id AND c.active=1
+                       ORDER BY c.created_at DESC
+                       LIMIT 1
+                   ) AS fuel_card_number
+            FROM work_employees e
         """
         params: tuple = ()
         if active_only:
-            sql += " WHERE active=1"
-        sql += " ORDER BY department, full_name, personnel_number"
+            sql += " WHERE e.active=1"
+        sql += " ORDER BY e.department, e.full_name, e.personnel_number"
         rows = self.db.query(sql, params)
         for item in rows:
             item["active"] = bool(item["active"])
