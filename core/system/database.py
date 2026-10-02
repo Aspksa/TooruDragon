@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .config import system_config
 from .paths import DATA_DIR, ROOT, SCHEMA_PATH
+from .migrations import apply_migrations
 
 
 class Database:
@@ -25,6 +26,7 @@ class Database:
         schema = SCHEMA_PATH.read_text(encoding="utf-8")
         with closing(sqlite3.connect(self.path, timeout=10)) as db:
             db.executescript(schema)
+            apply_migrations(db)
             db.execute(
                 "INSERT OR REPLACE INTO system_meta(key, value) VALUES(?, ?)",
                 ("version", version),

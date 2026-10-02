@@ -213,6 +213,11 @@ class GarageFuelService:
         model = str(payload.get("model") or "").strip()
         department = str(payload.get("department") or "").strip()
         fuel_type = str(payload.get("fuel_type") or "").strip()
+        tank_capacity = _float(
+            payload.get("tank_capacity_l"),
+            "tank_capacity_l",
+            allow_none=True,
+        )
         norm = _float(
             payload.get("default_norm_l_per_100km"),
             "default_norm_l_per_100km",
@@ -230,8 +235,8 @@ class GarageFuelService:
                 """
                 UPDATE garage_vehicles
                 SET registration_number=?, vin=?, make=?, model=?,
-                    department=?, fuel_type=?, default_norm_l_per_100km=?,
-                    active=?, updated_at=?
+                    department=?, fuel_type=?, tank_capacity_l=?,
+                    default_norm_l_per_100km=?, active=?, updated_at=?
                 WHERE id=?
                 """,
                 (
@@ -241,6 +246,7 @@ class GarageFuelService:
                     model,
                     department,
                     fuel_type,
+                    tank_capacity,
                     norm,
                     1 if active else 0,
                     now,
@@ -252,10 +258,10 @@ class GarageFuelService:
                 """
                 INSERT INTO garage_vehicles(
                     id, registration_number, vin, make, model, department,
-                    fuel_type, default_norm_l_per_100km, active,
+                    fuel_type, tank_capacity_l, default_norm_l_per_100km, active,
                     created_at, updated_at
                 )
-                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     vehicle_id,
@@ -265,6 +271,7 @@ class GarageFuelService:
                     model,
                     department,
                     fuel_type,
+                    tank_capacity,
                     norm,
                     1 if active else 0,
                     now,
@@ -277,7 +284,7 @@ class GarageFuelService:
         rows = self.db.query(
             """
             SELECT id, registration_number, vin, make, model, department,
-                   fuel_type, default_norm_l_per_100km, active,
+                   fuel_type, tank_capacity_l, default_norm_l_per_100km, active,
                    created_at, updated_at
             FROM garage_vehicles
             WHERE id=?
@@ -293,7 +300,7 @@ class GarageFuelService:
     def vehicles(self, *, active_only: bool = True) -> list[dict]:
         sql = """
             SELECT id, registration_number, vin, make, model, department,
-                   fuel_type, default_norm_l_per_100km, active,
+                   fuel_type, tank_capacity_l, default_norm_l_per_100km, active,
                    created_at, updated_at
             FROM garage_vehicles
         """
@@ -436,8 +443,9 @@ class GarageFuelService:
 
         fuel_open = _float(payload.get("fuel_open_l"), "fuel_open_l") or 0.0
         fuel_issued = _float(payload.get("fuel_issued_l"), "fuel_issued_l") or 0.0
+        refueled = _float(payload.get("refueled_l"), "refueled_l") or 0.0
         fuel_close = _float(payload.get("fuel_close_l"), "fuel_close_l") or 0.0
-        actual = round(fuel_open + fuel_issued - fuel_close, 4)
+        actual = round(fuel_open + fuel_issued + refueled - fuel_close, 4)
         if actual < -0.0001:
             raise ValueError("calculated fuel consumption cannot be negative")
         actual = max(0.0, actual)
@@ -474,6 +482,7 @@ class GarageFuelService:
             fuel_open,
             fuel_issued,
             fuel_close,
+            refueled,
             norm,
             actual,
             norm_consumption,
@@ -493,7 +502,7 @@ class GarageFuelService:
                 SET waybill_number=?, trip_date=?, employee_id=?, vehicle_id=?,
                     odometer_start=?, odometer_end=?, distance_km=?,
                     fuel_open_l=?, fuel_issued_l=?, fuel_close_l=?,
-                    norm_l_per_100km=?, actual_consumption_l=?,
+                    refueled_l=?, norm_l_per_100km=?, actual_consumption_l=?,
                     norm_consumption_l=?, deviation_l=?, source_document_id=?,
                     note=?, updated_at=?
                 WHERE id=?
@@ -506,12 +515,12 @@ class GarageFuelService:
                 INSERT INTO garage_waybills(
                     id, waybill_number, trip_date, employee_id, vehicle_id,
                     odometer_start, odometer_end, distance_km,
-                    fuel_open_l, fuel_issued_l, fuel_close_l,
+                    fuel_open_l, fuel_issued_l, fuel_close_l, refueled_l,
                     norm_l_per_100km, actual_consumption_l,
                     norm_consumption_l, deviation_l, source_document_id,
                     note, created_at, updated_at
                 )
-                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (waybill_id,) + values[:-1] + (now, now),
             )
@@ -523,8 +532,8 @@ class GarageFuelService:
             SELECT w.*, e.full_name, e.personnel_number,
                    v.registration_number, v.make, v.model
             FROM garage_waybills w
-            JOIN work_employees e ON e.id=w.employee_id
-            JOIN garage_vehicles v ON v.id=w.vehicle_id
+            LEFT JOIN work_employees e ON e.id=w.employee_id
+            LEFT JOIN garage_vehicles v ON v.id=w.vehicle_id
             WHERE w.id=?
             """,
             (waybill_id,),
@@ -540,8 +549,8 @@ class GarageFuelService:
             SELECT w.*, e.full_name, e.personnel_number,
                    v.registration_number, v.make, v.model
             FROM garage_waybills w
-            JOIN work_employees e ON e.id=w.employee_id
-            JOIN garage_vehicles v ON v.id=w.vehicle_id
+            LEFT JOIN work_employees e ON e.id=w.employee_id
+            LEFT JOIN garage_vehicles v ON v.id=w.vehicle_id
             WHERE w.trip_date BETWEEN ? AND ?
             ORDER BY w.trip_date DESC, w.waybill_number DESC
             """,
@@ -905,6 +914,7 @@ class GarageFuelService:
                 ROUND(COALESCE(SUM(deviation_l), 0), 4) AS deviation_l
             FROM garage_waybills
             WHERE trip_date BETWEEN ? AND ?
+              AND COALESCE(needs_review, 0)=0
             """,
             (start, end),
         )[0]
@@ -932,6 +942,9 @@ class GarageFuelService:
                    COUNT(*) AS waybills
             FROM garage_waybills w
             WHERE w.trip_date BETWEEN ? AND ?
+              AND COALESCE(w.needs_review, 0)=0
+              AND w.vehicle_id IS NOT NULL
+              AND w.employee_id IS NOT NULL
             GROUP BY w.vehicle_id, w.employee_id
             """,
             (start, end),

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import sys
 from datetime import date
 from pathlib import Path
@@ -11,6 +12,7 @@ from core.system import CoreRuntime, Route
 from core.work.documents import DOCUMENT_TYPES, DocumentIntelligenceService
 from core.work.garage import GarageFuelService
 from core.work.timesheet import STATUS_CODES, TimesheetService
+from core.work.waybills import WaybillAutomationService, WaybillBatchWorker
 
 CAPABILITIES = [
     "projects",
@@ -31,6 +33,10 @@ CAPABILITIES = [
     "waybills",
     "fuel_statements",
     "fuel_reconciliation",
+    "waybill_batch_processing",
+    "waybill_ocr",
+    "waybill_review",
+    "waybill_overtime_candidates",
 ]
 
 runtime = CoreRuntime(
@@ -41,6 +47,13 @@ runtime = CoreRuntime(
 timesheet = TimesheetService(runtime.db)
 documents = DocumentIntelligenceService(runtime.db)
 garage = GarageFuelService(runtime.db)
+waybills = WaybillAutomationService(
+    runtime.db,
+    documents=documents,
+    garage=garage,
+    timesheet=timesheet,
+)
+waybill_worker = WaybillBatchWorker(waybills)
 
 
 def capabilities(_request):
@@ -308,6 +321,323 @@ def document_archive(request):
     return 200, {"service": "work", "document": item}
 
 
+def waybill_status(_request):
+    return 200, {
+        "service": "work",
+        "waybills": {
+            "enabled": True,
+            "canonical_entity": "garage_waybills",
+            "ocr_once": True,
+            "ollama_used": False,
+            "stages": [
+                "uploaded",
+                "splitting",
+                "ocr",
+                "extracting",
+                "linking",
+                "calculating",
+                "validating",
+                "completed",
+            ],
+            "priority": "P2",
+            "worker": {
+                "running": bool(
+                    waybill_worker._thread
+                    and waybill_worker._thread.is_alive()
+                ),
+                "last_error": waybill_worker.last_error,
+            },
+        },
+    }
+
+
+def waybill_batches(request):
+    try:
+        limit = int(request.query.get("limit", ["50"])[0])
+    except ValueError:
+        return 400, {"error": "invalid_limit"}
+    return 200, {
+        "service": "work",
+        "batches": waybills.batches(limit=limit),
+    }
+
+
+def waybill_batch_get(request):
+    batch_id = str(request.query.get("id", [""])[0]).strip()
+    if not batch_id:
+        return 400, {"error": "batch_id_required"}
+    try:
+        item = waybills.batch(batch_id)
+        item["summary"] = waybills.batch_summary(batch_id)
+    except KeyError:
+        return 404, {"error": "batch_not_found"}
+    return 200, {"service": "work", "batch": item}
+
+
+def waybill_batch_pages(request):
+    batch_id = str(request.query.get("id", [""])[0]).strip()
+    if not batch_id:
+        return 400, {"error": "batch_id_required"}
+    try:
+        waybills.batch(batch_id)
+    except KeyError:
+        return 404, {"error": "batch_not_found"}
+    return 200, {
+        "service": "work",
+        "batch_id": batch_id,
+        "pages": waybills.batch_pages(batch_id),
+    }
+
+
+def waybill_batch_upload_chunk(request):
+    payload = request.json if isinstance(request.json, dict) else {}
+    try:
+        item = waybills.upload_chunk(payload)
+    except (ValueError, OSError) as exc:
+        return 400, {
+            "error": "waybill_batch_upload_failed",
+            "message": str(exc),
+        }
+    if item.get("complete"):
+        runtime.events.publish(
+            "work.waybill.batch.uploaded",
+            "work",
+            {
+                "batch_id": item["id"],
+                "sha256": item["sha256"],
+                "duplicate": bool(item.get("duplicate")),
+            },
+        )
+    return 200, {"service": "work", "upload": item}
+
+
+def waybill_batch_upload(request):
+    payload = request.json if isinstance(request.json, dict) else {}
+    filename = str(payload.get("filename") or "").strip()
+    encoded = str(payload.get("content_base64") or "").strip()
+    if not filename or not encoded:
+        return 400, {"error": "filename_and_content_required"}
+    try:
+        raw = base64.b64decode(encoded, validate=True)
+        item = waybills.upload_bytes(
+            filename=filename,
+            raw=raw,
+            uploaded_by=str(payload.get("uploaded_by") or "user"),
+            source=str(payload.get("source") or "documents"),
+        )
+    except (ValueError, OSError) as exc:
+        return 400, {
+            "error": "waybill_batch_upload_failed",
+            "message": str(exc),
+        }
+    runtime.events.publish(
+        "work.waybill.batch.uploaded",
+        "work",
+        {
+            "batch_id": item["id"],
+            "sha256": item["sha256"],
+            "duplicate": bool(item.get("duplicate")),
+        },
+    )
+    return 200, {"service": "work", "batch": item}
+
+
+def waybill_batch_reprocess(request):
+    payload = request.json if isinstance(request.json, dict) else {}
+    batch_id = str(payload.get("batch_id") or "").strip()
+    if not batch_id:
+        return 400, {"error": "batch_id_required"}
+    try:
+        batch = waybills.batch(batch_id)
+    except KeyError:
+        return 404, {"error": "batch_not_found"}
+    task = waybills.workflow.create_task(
+        kind="waybill.batch.process",
+        payload={"batch_id": batch_id},
+        priority=20,
+        max_attempts=3,
+        idempotency_key=f"waybill-batch-reprocess:{batch_id}:{batch['updated_at']}",
+        required_capability="waybill_processing",
+    )
+    return 202, {"service": "work", "task": task}
+
+
+def waybill_list(request):
+    month = str(request.query.get("month", [""])[0]).strip() or None
+    batch_id = str(request.query.get("batch_id", [""])[0]).strip() or None
+    review_raw = str(request.query.get("needs_review", [""])[0]).strip().lower()
+    review = None
+    if review_raw in {"1", "true", "yes"}:
+        review = True
+    elif review_raw in {"0", "false", "no"}:
+        review = False
+    try:
+        items = waybills.waybills(
+            month=month,
+            batch_id=batch_id,
+            needs_review=review,
+        )
+    except (ValueError, TypeError) as exc:
+        return 400, {"error": "invalid_waybill_filter", "message": str(exc)}
+    return 200, {"service": "work", "waybills": items}
+
+
+def waybill_get(request):
+    waybill_id = str(request.query.get("id", [""])[0]).strip()
+    if not waybill_id:
+        return 400, {"error": "waybill_id_required"}
+    try:
+        item = waybills.waybill(waybill_id)
+    except KeyError:
+        return 404, {"error": "waybill_not_found"}
+    return 200, {"service": "work", "waybill": item}
+
+
+def waybill_field_correct(request):
+    payload = request.json if isinstance(request.json, dict) else {}
+    waybill_id = str(payload.get("waybill_id") or "").strip()
+    field_key = str(payload.get("field_key") or "").strip()
+    if not waybill_id or not field_key:
+        return 400, {"error": "waybill_and_field_required"}
+    try:
+        item = waybills.correct_field(
+            waybill_id,
+            field_key=field_key,
+            corrected_value=str(payload.get("value") or ""),
+            actor=str(payload.get("actor") or "user"),
+            reason=str(payload.get("reason") or ""),
+        )
+    except KeyError:
+        return 404, {"error": "waybill_or_field_not_found"}
+    except ValueError as exc:
+        return 400, {"error": "invalid_waybill_correction", "message": str(exc)}
+    return 200, {"service": "work", "waybill": item}
+
+
+def waybill_confirm(request):
+    payload = request.json if isinstance(request.json, dict) else {}
+    waybill_id = str(payload.get("waybill_id") or "").strip()
+    if not waybill_id:
+        return 400, {"error": "waybill_id_required"}
+    try:
+        item = waybills.confirm_waybill(
+            waybill_id,
+            actor=str(payload.get("actor") or "user"),
+            comment=str(payload.get("comment") or ""),
+        )
+    except KeyError:
+        return 404, {"error": "waybill_not_found"}
+    except ValueError as exc:
+        return 409, {
+            "error": "waybill_confirmation_blocked",
+            "message": str(exc),
+        }
+    return 200, {"service": "work", "waybill": item}
+
+
+def employee_schedules(request):
+    employee_id = str(
+        request.query.get("employee_id", [""])[0]
+    ).strip() or None
+    return 200, {
+        "service": "work",
+        "schedules": waybills.schedules(employee_id),
+    }
+
+
+def employee_schedule_save(request):
+    payload = request.json if isinstance(request.json, dict) else {}
+    try:
+        item = waybills.save_schedule(payload)
+    except KeyError:
+        return 404, {"error": "employee_not_found"}
+    except ValueError as exc:
+        return 400, {"error": "invalid_schedule", "message": str(exc)}
+    return 200, {"service": "work", "schedule": item}
+
+
+def waybill_overtime_candidates(request):
+    month = str(request.query.get("month", [""])[0]).strip() or None
+    status = str(request.query.get("status", [""])[0]).strip() or None
+    try:
+        items = waybills.overtime_candidates(month=month, status=status)
+    except (ValueError, TypeError) as exc:
+        return 400, {"error": "invalid_overtime_filter", "message": str(exc)}
+    return 200, {"service": "work", "candidates": items}
+
+
+def waybill_monthly_mileage(request):
+    month = str(request.query.get("month", [""])[0]).strip()
+    if not month:
+        month = date.today().strftime("%Y-%m")
+    try:
+        data = waybills.monthly_mileage_summary(month)
+    except ValueError as exc:
+        return 400, {"error": "invalid_month", "message": str(exc)}
+    return 200, {"service": "work", "summary": data}
+
+
+def waybill_overtime_summary(request):
+    month = str(request.query.get("month", [""])[0]).strip()
+    if not month:
+        month = date.today().strftime("%Y-%m")
+    try:
+        data = waybills.overtime_month_summary(month)
+    except (ValueError, TypeError) as exc:
+        return 400, {"error": "invalid_month", "message": str(exc)}
+    return 200, {"service": "work", "summary": data}
+
+
+def waybill_overtime_review(request):
+    payload = request.json if isinstance(request.json, dict) else {}
+    candidate_id = str(payload.get("candidate_id") or "").strip()
+    if not candidate_id:
+        return 400, {"error": "candidate_id_required"}
+    corrected = payload.get("corrected_total_minutes")
+    try:
+        item = waybills.review_overtime(
+            candidate_id,
+            action=str(payload.get("action") or ""),
+            actor=str(payload.get("actor") or "user"),
+            corrected_total_minutes=(
+                int(corrected)
+                if corrected not in {None, ""}
+                else None
+            ),
+            comment=str(payload.get("comment") or ""),
+        )
+    except KeyError:
+        return 404, {"error": "candidate_not_found"}
+    except (ValueError, TypeError) as exc:
+        return 400, {"error": "invalid_overtime_review", "message": str(exc)}
+    runtime.events.publish(
+        "work.waybill.overtime.reviewed",
+        "work",
+        {
+            "candidate_id": item["id"],
+            "waybill_id": item["waybill_id"],
+            "status": item["status"],
+        },
+    )
+    return 200, {"service": "work", "candidate": item}
+
+
+def waybill_audit(request):
+    entity_type = str(
+        request.query.get("entity_type", [""])[0]
+    ).strip() or None
+    entity_id = str(
+        request.query.get("entity_id", [""])[0]
+    ).strip() or None
+    return 200, {
+        "service": "work",
+        "audit": waybills.audit(
+            entity_type=entity_type,
+            entity_id=entity_id,
+        ),
+    }
+
+
 def garage_status(_request):
     return 200, {
         "service": "work",
@@ -559,6 +889,26 @@ def employee_save(request):
                 "employee": item,
             }
 
+    schedule_start = str(payload.get("workday_start") or "").strip()
+    schedule_end = str(payload.get("workday_end") or "").strip()
+    if schedule_start or schedule_end:
+        if not schedule_start or not schedule_end:
+            return 400, {
+                "error": "invalid_schedule",
+                "message": "Нужно указать и начало, и конец рабочего дня",
+            }
+        try:
+            waybills.save_schedule({
+                "employee_id": item["id"],
+                "start_time": schedule_start,
+                "end_time": schedule_end,
+                "weekdays": payload.get("workdays", [0, 1, 2, 3, 4]),
+                "source": "employee_directory",
+                "actor": str(payload.get("actor") or "user"),
+            })
+        except ValueError as exc:
+            return 400, {"error": "invalid_schedule", "message": str(exc)}
+
     runtime.events.publish(
         "work.timesheet.employee.saved",
         "work",
@@ -701,6 +1051,8 @@ def month_anomalies(request):
 
 
 if __name__ == "__main__":
+    runtime.db.initialize(runtime.version)
+    waybill_worker.start()
     runtime.run({
         "/capabilities": Route(capabilities, protected=False),
         "/documents/status": Route(documents_status, protected=False),
@@ -735,6 +1087,64 @@ if __name__ == "__main__":
         ),
         "/documents/archive": Route(
             document_archive,
+            method="POST",
+            protected=True,
+        ),
+        "/waybills/status": Route(waybill_status, protected=False),
+        "/waybills/batches": Route(waybill_batches, protected=True),
+        "/waybills/batch": Route(waybill_batch_get, protected=True),
+        "/waybills/batch/pages": Route(waybill_batch_pages, protected=True),
+        "/waybills": Route(waybill_list, protected=True),
+        "/waybills/get": Route(waybill_get, protected=True),
+        "/waybills/monthly-mileage": Route(
+            waybill_monthly_mileage,
+            protected=True,
+        ),
+        "/waybills/overtime": Route(
+            waybill_overtime_candidates,
+            protected=True,
+        ),
+        "/waybills/overtime/summary": Route(
+            waybill_overtime_summary,
+            protected=True,
+        ),
+        "/waybills/audit": Route(waybill_audit, protected=True),
+        "/waybills/batch/upload-chunk": Route(
+            waybill_batch_upload_chunk,
+            method="POST",
+            protected=True,
+        ),
+        "/waybills/batch/upload": Route(
+            waybill_batch_upload,
+            method="POST",
+            protected=True,
+        ),
+        "/waybills/batch/reprocess": Route(
+            waybill_batch_reprocess,
+            method="POST",
+            protected=True,
+        ),
+        "/waybills/field/correct": Route(
+            waybill_field_correct,
+            method="POST",
+            protected=True,
+        ),
+        "/waybills/confirm": Route(
+            waybill_confirm,
+            method="POST",
+            protected=True,
+        ),
+        "/waybills/overtime/review": Route(
+            waybill_overtime_review,
+            method="POST",
+            protected=True,
+        ),
+        "/timesheet/schedules": Route(
+            employee_schedules,
+            protected=True,
+        ),
+        "/timesheet/schedule/save": Route(
+            employee_schedule_save,
             method="POST",
             protected=True,
         ),
